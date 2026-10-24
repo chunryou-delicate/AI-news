@@ -61,11 +61,13 @@ function serve(cfg) {
       return;
     }
     const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
-    if (fromQuery) headers['Set-Cookie'] = `wr=${cfg.token}; Max-Age=${30 * 24 * 3600}; Path=/; HttpOnly; SameSite=Strict`;
+    // 다른 앱에서 링크를 눌러 들어와도 쿠키가 실리도록 Lax 로 둔다 (Strict 면 첫 이동에서 쿠키가 빠져 막힌다).
+    if (fromQuery) headers['Set-Cookie'] = `wr=${cfg.token}; Max-Age=${30 * 24 * 3600}; Path=/; HttpOnly; SameSite=Lax`;
     let pathname;
     try { pathname = decodeURIComponent(u.pathname); } catch (_) { res.writeHead(400).end(); return; }
     if (pathname === '/') {
-      res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) })).end();
+      // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
+      res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();
       return;
     }
     if (!ALLOWED.test(pathname)) { res.writeHead(404, headers).end(); return; }
