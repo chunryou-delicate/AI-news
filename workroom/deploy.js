@@ -16,7 +16,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const TARGET = path.join(os.homedir(), '.claude', 'workroom');
-const CODE = ['hook.js', 'install-hooks.js', 'sync.js', '현황판.html'];
+const CODE = ['hook.js', 'install-hooks.js', 'sync.js', 'server.js', '현황판.html'];
 const TASK = 'WorkroomSync';
 const argv = process.argv.slice(2);
 const has = (flag) => argv.includes(flag);

@@ -20,6 +20,13 @@ node workroom/deploy.js
 - 방 목록은 `~/.claude/workroom/rooms.json`에서 바꿔요. 세션의 작업 폴더가 `paths` 아래에 있으면 그 방에 앉아요. 어느 방에도 안 맞으면 "기타" 라운지로 가요.
 - 훅 빼기: `node ~/.claude/workroom/install-hooks.js --uninstall`
 
+## 폰에서 보기 (같은 와이파이)
+
+`node ~/.claude/workroom/server.js`를 띄우면 같은 와이파이의 폰에서 현황판을 볼 수 있어요. 처음 띄울 때 `server.json`에 열쇠(token)를 만들고, 폰에서 열 링크(`http://<PC 주소>:8790/?k=<열쇠>`)를 보여 줘요. `node server.js --link`로 링크를 다시 볼 수 있어요.
+
+- 현황판 화면과 그 화면이 읽는 파일만 내보내고, 열쇠가 맞아야 열려요. 한 번 열면 30일 동안 기억해요.
+- PC를 켤 때마다 자동으로 띄우려면 시작프로그램 폴더에 숨김 실행 스크립트를 두면 돼요.
+
 ## 다른 컴퓨터 세션도 같이 보기
 
 다른 컴퓨터(예: 회사 노트북)의 세션을 이 현황판에 "<컴퓨터 이름> 층"으로 함께 보여 줄 수 있어요. 주고받는 길은 **비공개** git 저장소예요. 이 저장소는 공개라서 기록을 여기에 올리면 안 돼요.
@@ -54,6 +61,7 @@ node workroom/deploy.js --machine "집 컴퓨터" --sync <비공개 저장소 �
 | `install-hooks.js` | `~/.claude/settings.json`에 훅을 넣거나(`--uninstall`이면 빼기) |
 | `현황판.html` | 현황판 화면. `file://`로 열어도 되도록 데이터를 `<script>`로 1.5초마다 다시 읽어요 |
 | `rooms.json` | 회의실(프로젝트 폴더) 목록 |
+| `server.js` | 같은 와이파이의 폰에서 보는 작은 웹 서버 (열쇠가 있어야 열림) |
 | `sync.js` | 다른 컴퓨터와 비공개 git 저장소로 기록 주고받기 (`sync.json` 설정) |
 | `deploy.js` | 이 폴더의 코드를 `~/.claude/workroom`에 복사하고 훅 설치. 동기화 설정과 작업 스케줄러 등록도 해요 |
 

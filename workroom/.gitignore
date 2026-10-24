@@ -22,3 +22,6 @@ sync-hidden.vbs
 sync-out/
 sync-in/
 remote/
+# 폰에서 보기 서버 (server.js) 열쇠
+server.json
+server-hidden.vbs
