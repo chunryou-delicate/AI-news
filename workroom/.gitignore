@@ -32,3 +32,6 @@ tunnel.pid
 tunnel.log
 tunnel-hidden.vbs
 link-repo/
+# 회의록 보관 (sync.js)
+archive-repo/
+archive.request

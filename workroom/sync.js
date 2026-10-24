@@ -21,6 +21,9 @@ const OUT_DIR = path.join(ROOT, 'sync-out');
 const IN_DIR = path.join(ROOT, 'sync-in');
 const REMOTE_DIR = path.join(ROOT, 'remote');
 const LOGS_DIR = path.join(ROOT, 'logs');
+const MINUTES_DIR = path.join(ROOT, 'minutes');
+const ARCH_DIR = path.join(ROOT, 'archive-repo');           // 회의록 보관용 (저장소 main 브랜치)
+const ARCHIVE_REQ = path.join(ROOT, 'archive.request');     // 회의가 끝나면 hook.js 가 만들어 바로 올리게 한다
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const MIN = 60 * 1000;
 const args = process.argv.slice(2);
@@ -183,6 +186,45 @@ function pullOthers(cfg, interactive) {
   return pulled;
 }
 
+// ---------- 회의록 보관 ----------
+// 이 컴퓨터의 회의록(minutes/<방>/<날짜>.md)을 저장소 main 브랜치의 minutes/<컴퓨터>/<방>/<날짜>.md 로 커밋한다.
+// 다른 컴퓨터나 tunnel.js 도 main 에 올리므로, 밀려나면 새로 받아서 다시 올린다.
+function safeName(name) {
+  return String(name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'room';
+}
+
+function archiveMinutes(cfg, interactive) {
+  let rooms = [];
+  try { rooms = fs.readdirSync(MINUTES_DIR).filter((d) => fs.statSync(path.join(MINUTES_DIR, d)).isDirectory()); } catch (_) { return 'none'; }
+  ensureRepo(ARCH_DIR, cfg.repo);
+  const machineDir = path.join('minutes', safeName(cfg.machine || os.hostname()));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    git(ARCH_DIR, ['fetch', '-q', '--depth', '1', 'origin', 'main'], interactive);
+    git(ARCH_DIR, ['checkout', '-q', '-f', '-B', 'main', 'FETCH_HEAD']);
+    for (const room of rooms) {
+      const src = path.join(MINUTES_DIR, room);
+      const dst = path.join(ARCH_DIR, machineDir, room);
+      for (const f of fs.readdirSync(src).filter((x) => x.endsWith('.md'))) {
+        fs.mkdirSync(dst, { recursive: true });
+        fs.copyFileSync(path.join(src, f), path.join(dst, f));
+      }
+    }
+    git(ARCH_DIR, ['add', '-A', 'minutes']);
+    let changed = true;
+    try { git(ARCH_DIR, ['diff', '--cached', '--quiet']); changed = false; } catch (_) {}
+    if (!changed) return 'unchanged';
+    git(ARCH_DIR, ['-c', 'user.name=workroom', '-c', 'user.email=workroom@localhost', 'commit', '-q', '-m',
+      `회의록 ${cfg.machine || os.hostname()} ${new Date().toLocaleString('ko-KR')}`]);
+    try {
+      git(ARCH_DIR, ['push', '-q', 'origin', 'main'], interactive);
+      return 'pushed';
+    } catch (e) {
+      if (attempt === 2) throw e;   // 그사이 다른 쪽이 main 에 올렸으면 새로 받아서 다시
+    }
+  }
+  return 'failed';
+}
+
 // ---------- 실행 ----------
 
 function runOnce() {
@@ -194,13 +236,29 @@ function runOnce() {
     return;
   }
   const interactive = args.includes('--interactive');
-  const status = { lastRun: Date.now(), ok: true, error: '', machine: cfg.machine || '' };
+  const prev = readJson(STATUS_FILE, {});
+  const status = { lastRun: Date.now(), ok: true, error: '', machine: cfg.machine || '', lastArchive: prev.lastArchive || 0, archive: prev.archive || '' };
   try {
     if (cfg.push) status.pushed = pushSnapshot(cfg, interactive);
     if (cfg.pull) status.pulled = pullOthers(cfg, interactive);
   } catch (e) {
     status.ok = false;
     status.error = String(e && (e.stderr || e.message) || e).trim().slice(0, 400);
+    logError(e);
+  }
+  // 회의록 보관: 회의가 끝났거나(archive.request) 마지막 보관 후 archiveMinutes(기본 10)분이 지났으면 올린다.
+  const due = cfg.archive !== false && (fs.existsSync(ARCHIVE_REQ) || args.includes('--archive')
+    || Date.now() - (prev.lastArchive || 0) > (Number(cfg.archiveMinutes) || 10) * MIN);
+  try {
+    if (due) {
+      try { fs.unlinkSync(ARCHIVE_REQ); } catch (_) {}
+      status.archive = archiveMinutes(cfg, interactive);
+      status.lastArchive = Date.now();
+      delete status.archiveError;
+    }
+  } catch (e) {
+    status.archive = 'failed';
+    status.archiveError = String(e && (e.stderr || e.message) || e).trim().slice(0, 300);
     logError(e);
   } finally {
     try { fs.closeSync(fd); } catch (_) {}

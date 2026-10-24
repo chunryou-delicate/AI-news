@@ -58,6 +58,7 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 node workroom/deploy.js --machine "집 컴퓨터" --sync <비공개 저장소 주소> --pull --schedule
 ```
 
+- **회의록 보관:** 동기화를 켠 컴퓨터는 자기 회의록(.md)을 비공개 저장소 main 브랜치의 `minutes/<컴퓨터>/<방>/<날짜>.md`로 커밋해요. 바뀐 게 있으면 10분마다(`sync.json`의 `archiveMinutes`), 회의가 끝나면 바로 올려요. 끄려면 `"archive": false`.
 - 끄기: `~/.claude/workroom/sync.json` 지우기, 작업 스케줄러는 `node workroom/deploy.js --no-hooks --unschedule`
 - 동기화 결과는 `~/.claude/workroom/sync-status.json`, 오류는 `error.log`에 남아요
 

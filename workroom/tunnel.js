@@ -50,22 +50,30 @@ function publishLink(link) {
       git(['init', '-q']);
       git(['remote', 'add', 'origin', sync.repo]);
     }
-    git(['fetch', '-q', '--depth', '1', 'origin', 'main']);
-    git(['checkout', '-q', '-B', 'main', 'FETCH_HEAD']);
-    const now = new Date();
-    fs.writeFileSync(path.join(LINK_DIR, 'LINK.md'), [
-      '# 업무방 현황판 바깥 링크',
-      '',
-      `**[현황판 열기](${link})**`,
-      '',
-      `- 주소: ${link}`,
-      `- 바뀐 시각: ${now.toLocaleString('ko-KR')}`,
-      '- 집 PC를 다시 켜면 주소가 바뀌고, 이 파일도 새 주소로 바뀌어요.',
-      '',
-    ].join('\n'));
-    git(['add', 'LINK.md']);
-    git(['-c', 'user.name=workroom', '-c', 'user.email=workroom@localhost', 'commit', '-q', '-m', `현황판 링크 갱신 ${now.toISOString()}`]);
-    git(['push', '-q', 'origin', 'main']);
+    // 회의록 보관(sync.js)도 main 에 올리므로, 밀려나면 새로 받아서 다시 올린다.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      git(['fetch', '-q', '--depth', '1', 'origin', 'main']);
+      git(['checkout', '-q', '-f', '-B', 'main', 'FETCH_HEAD']);
+      const now = new Date();
+      fs.writeFileSync(path.join(LINK_DIR, 'LINK.md'), [
+        '# 업무방 현황판 바깥 링크',
+        '',
+        `**[현황판 열기](${link})**`,
+        '',
+        `- 주소: ${link}`,
+        `- 바뀐 시각: ${now.toLocaleString('ko-KR')}`,
+        '- 집 PC를 다시 켜면 주소가 바뀌고, 이 파일도 새 주소로 바뀌어요.',
+        '',
+      ].join('\n'));
+      git(['add', 'LINK.md']);
+      git(['-c', 'user.name=workroom', '-c', 'user.email=workroom@localhost', 'commit', '-q', '-m', `현황판 링크 갱신 ${now.toISOString()}`]);
+      try {
+        git(['push', '-q', 'origin', 'main']);
+        break;
+      } catch (e) {
+        if (attempt === 2) throw e;
+      }
+    }
     log('LINK.md 갱신');
   } catch (e) {
     log('LINK.md 갱신 실패: ' + String(e.stderr || e.message).trim().slice(0, 300));

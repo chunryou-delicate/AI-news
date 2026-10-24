@@ -445,6 +445,8 @@ function diffMeetings(meetings) {
       if (!next[k] && cache[k].room) {
         appendEntries(cache[k].room, [{ t: now, sid: '', who: '의장', kind: 'meeting', text: `안건 ${cache[k].agenda} 회의 종료` }]);
         touched.add(cache[k].room);
+        // 회의가 끝나면 다음 동기화 때 회의록을 바로 비공개 저장소에 올리게 한다 (sync.js).
+        try { fs.writeFileSync(path.join(ROOT, 'archive.request'), String(now)); } catch (_) {}
       }
     }
     writeAtomic(MEETING_CACHE, JSON.stringify(next));
