@@ -1408,9 +1408,9 @@
       list.map(function (s) { return [s.id, s.state, s.title, s.quiet, (s.subagents || []).map(function (a) { return a.type; })]; })]);
     if (key !== lastRoomScene) {
       lastRoomScene = key;
-      // 회의실 안은 사람 수에 맞춰 한 줄에 3~5자리로 넓게 앉힌다.
+      // 회의실 안은 평면도처럼 한 줄에 4자리(모두 8자리)이고, 8명이 넘으면 한 줄에 5자리로 늘린다.
       var pre = layoutRoom(list, room.kind, mt);
-      var k = Math.max(3, Math.min(5, Math.ceil((pre.mains.length + pre.workers.length) / 2)));
+      var k = Math.max(4, Math.min(5, Math.ceil((pre.mains.length + pre.workers.length) / 2)));
       roomGeo = interiorGeo(k);
       var scene = withGeo(roomGeo, function () {
         return roomSvg(room, list, room.kind, now, mt) +
