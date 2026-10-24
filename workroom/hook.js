@@ -19,7 +19,10 @@ const MEETING_CACHE = path.join(ROOT, 'meetings-cache.json');
 const MEETING_LOCK = path.join(ROOT, 'meetings.lock');
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
-const REGISTRY_DIR = path.join(CLAUDE_DIR, 'sessions');
+const REGISTRY_DIR = process.env.WORKROOM_REGISTRY_DIR || path.join(CLAUDE_DIR, 'sessions');
+const SYNC_FILE = path.join(ROOT, 'sync.json');            // 다른 컴퓨터와 주고받기 설정 (sync.js)
+const SYNC_STATUS = path.join(ROOT, 'sync-status.json');
+const REMOTE_DIR = path.join(ROOT, 'remote');               // 다른 컴퓨터에서 받아 온 상태
 const PROJECTS_DIR = path.join(CLAUDE_DIR, 'projects');
 
 const MIN = 60 * 1000;
@@ -484,8 +487,7 @@ function handleMessage(input) {
   if (!s.orca && process.env.ORCA_TERMINAL_HANDLE) s.orca = { terminal: process.env.ORCA_TERMINAL_HANDLE, agent: process.env.ORCA_AGENT_SESSION_ID || '' };
   const entries = collectEntries('MessageDisplay', input, s, speakerFor(s));
   if (!entries.length) return;
-  const { rooms, other } = loadRooms();
-  const room = (roomFor(s.cwd, rooms) || other).name;
+  const room = roomNameFor(s.cwd, loadRooms());
   appendEntries(room, entries);
   writeRoomLog(room);
 }
@@ -614,8 +616,7 @@ function handleEvent(input) {
   try {
     const entries = collectEntries(ev, input, s, speakerFor(s));
     if (entries.length || ev === 'Stop') {
-      const { rooms, other } = loadRooms();
-      const room = (roomFor(s.cwd, rooms) || other).name;
+      const room = roomNameFor(s.cwd, loadRooms());
       appendEntries(room, entries);
       writeRoomLog(room);
       if (ev === 'Stop' || ev === 'SessionEnd' || ev === 'StopFailure') writeMinutesMd(room, dayStr(Date.now()));
@@ -684,7 +685,29 @@ function loadRooms() {
     paths: (Array.isArray(r.paths) ? r.paths : [r.paths]).filter(Boolean),
   }));
   const other = Object.assign({ no: '99', name: '기타' }, cfg.otherRoom || {});
-  return { rooms, other };
+  // auto: 방 목록을 따로 정하지 않고 세션의 프로젝트 폴더(가장 바깥 git 저장소, 없으면 작업 폴더) 이름으로 방을 만든다.
+  return { rooms, other, auto: !!cfg.auto };
+}
+
+function projectOf(cwd) {
+  if (!cwd) return '';
+  const home = path.resolve(os.homedir()).toLowerCase();
+  let dir = path.resolve(String(cwd));
+  let top = null;
+  for (let i = 0; i < 15; i++) {
+    if (dir.toLowerCase() === home) break;
+    if (fs.existsSync(path.join(dir, '.git'))) top = dir;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return folderOf(top || cwd);
+}
+
+function roomNameFor(cwd, R) {
+  if (R.auto) return projectOf(cwd) || R.other.name;
+  const r = roomFor(cwd, R.rooms);
+  return r ? r.name : R.other.name;
 }
 
 function roomFor(cwd, rooms) {
@@ -700,9 +723,38 @@ function roomFor(cwd, rooms) {
   return best;
 }
 
+// 다른 컴퓨터(sync.js 가 받아 둔 remote/<키>/)의 세션·방·회의를 "<컴퓨터 이름> · <방>" 으로 붙여 읽는다.
+function readRemote(now) {
+  const out = { machines: [], sessions: [], rooms: [], meetings: [] };
+  let dirs = [];
+  try { dirs = fs.readdirSync(REMOTE_DIR); } catch (_) { return out; }
+  for (const d of dirs) {
+    const meta = readJson(path.join(REMOTE_DIR, d, 'meta.json'), null);
+    const st = readJson(path.join(REMOTE_DIR, d, 'state.json'), null);
+    if (!meta || !st) continue;
+    const age = now - (meta.generatedAt || 0);
+    if (age > 6 * HOUR) continue;
+    const machine = clip(text(meta.machine), 30) || d;
+    const prefix = (name) => `${machine} · ${name}`;
+    out.machines.push({ name: machine, key: d, generatedAt: meta.generatedAt || 0 });
+    const used = new Set();
+    for (const s of st.sessions || []) {
+      if (s.state === 'ended') continue;
+      used.add(s.room);
+      out.sessions.push(Object.assign({}, s, { room: prefix(s.room), machine, quiet: s.quiet || age > 10 * MIN }));
+    }
+    for (const r of st.rooms || []) {
+      if (used.has(r.name)) out.rooms.push({ no: r.no, name: prefix(r.name), label: r.name, key: roomKey(prefix(r.name)), machine, isOther: !!r.isOther });
+    }
+    for (const m of st.meetings || []) out.meetings.push(Object.assign({}, m, { room: prefix(m.room), key: `${d}:${m.key}`, machine }));
+  }
+  return out;
+}
+
 function rebuild() {
   const now = Date.now();
-  const { rooms, other } = loadRooms();
+  const R = loadRooms();
+  const { rooms, other } = R;
   const registry = readRegistry();
   const cache = readJson(CACHE_FILE, {});
   let cacheDirty = false;
@@ -736,7 +788,7 @@ function rebuild() {
     if (state === 'ended' && now - (s.endedAt || s.updatedAt || 0) > ENDED_VISIBLE_MS) continue;
 
     seen.add(s.id);
-    sessions.push(publicSession(s, state, quiet, reg, rooms, other));
+    sessions.push(publicSession(s, state, quiet, reg, R));
   }
 
   // 훅 기록은 없지만 Claude Code 가 실행 중이라고 알려 주는 세션도 보여 준다.
@@ -758,7 +810,7 @@ function rebuild() {
       updatedAt: reg.statusUpdatedAt,
     };
     const state = reg.status === 'busy' ? 'working' : 'idle';
-    sessions.push(publicSession(s, state, false, reg, rooms, other));
+    sessions.push(publicSession(s, state, false, reg, R));
   }
 
   if (cacheDirty) {
@@ -769,12 +821,23 @@ function rebuild() {
   const meetings = readMeetings(now, sessions);
   diffMeetings(meetings);
   cleanupMinutes();
+  let roomList;
+  if (R.auto) {
+    // 방을 세션의 프로젝트 폴더에서 만든다 (일하는 세션이 있는 방만).
+    const names = [...new Set(sessions.filter((s) => s.state !== 'ended').map((s) => s.room))].sort();
+    roomList = names.map((name, i) => ({ no: String((i + 1) * 10), name, key: roomKey(name) }));
+  } else {
+    roomList = rooms.map((r) => ({ no: r.no, name: r.name, key: roomKey(r.name) }))
+      .concat([{ no: other.no, name: other.name, key: roomKey(other.name), isOther: true }]);
+  }
+  const remote = readRemote(now);
   const payload = {
     generatedAt: now,
-    rooms: rooms.map((r) => ({ no: r.no, name: r.name, key: roomKey(r.name) }))
-      .concat([{ no: other.no, name: other.name, key: roomKey(other.name), isOther: true }]),
-    sessions,
-    meetings,
+    rooms: roomList.concat(remote.rooms),
+    sessions: sessions.concat(remote.sessions),
+    meetings: meetings.concat(remote.meetings),
+    machines: remote.machines,
+    sync: readJson(SYNC_STATUS, null),
   };
   writeAtomic(STATE_FILE, `window.__WORKROOM__ = ${JSON.stringify(payload)};\n`);
 }
@@ -857,8 +920,7 @@ function readMeetings(now, sessions) {
   return out;
 }
 
-function publicSession(s, state, quiet, reg, rooms, other) {
-  const room = roomFor(s.cwd, rooms);
+function publicSession(s, state, quiet, reg, R) {
   const folder = String(s.cwd || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
   // SubagentStop 을 놓친 워커가 계속 남지 않도록, 끝난 세션이거나 6시간 넘은 워커는 뺀다.
   const subagents = state === 'ended' ? [] : Object.values(s.subagents || {})
@@ -866,7 +928,7 @@ function publicSession(s, state, quiet, reg, rooms, other) {
     .map((a) => ({ type: a.type, since: a.since }));
   return {
     id: s.id,
-    room: room ? room.name : other.name,
+    room: roomNameFor(s.cwd, R),
     folder,
     cwd: s.cwd || '',
     title: s.title || '',
@@ -888,6 +950,18 @@ function publicSession(s, state, quiet, reg, rooms, other) {
   };
 }
 
+// 다른 컴퓨터와 주고받기(sync.json 이 있을 때): 기다리는 동기화가 없으면 백그라운드로 하나 걸어 둔다.
+function kickSync() {
+  try {
+    if (!fs.existsSync(SYNC_FILE)) return;
+    try { if (Date.now() - fs.statSync(path.join(ROOT, 'sync.pending')).mtimeMs < 5 * MIN) return; } catch (_) {}
+    const child = require('child_process').spawn(process.execPath, [path.join(ROOT, 'sync.js'), '--defer'], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.unref();
+  } catch (e) {
+    logError(e);
+  }
+}
+
 // ---------- 진입점 ----------
 
 function main() {
@@ -895,10 +969,12 @@ function main() {
     rebuild();
     // 수동 재생성 때는 오늘 회의록이 있는 방의 현황판용 파일과 md 도 다시 만든다.
     const day = dayStr(Date.now());
-    const { rooms, other } = loadRooms();
-    for (const r of rooms.concat([other])) {
-      if (fs.existsSync(path.join(minutesDir(r.name), `${day}.jsonl`))) { writeRoomLog(r.name); writeMinutesMd(r.name, day); }
+    let dirs = [];
+    try { dirs = fs.readdirSync(MINUTES_DIR); } catch (_) {}
+    for (const d of dirs) {
+      if (fs.existsSync(path.join(MINUTES_DIR, d, `${day}.jsonl`))) { writeRoomLog(d); writeMinutesMd(d, day); }
     }
+    writeSpeechJs();
     return;
   }
   let raw = '';
@@ -917,6 +993,7 @@ function main() {
     } catch (e) {
       logError(e);
     }
+    kickSync();
     clearTimeout(guard);
   });
 }

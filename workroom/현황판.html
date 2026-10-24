@@ -231,6 +231,12 @@
     background-image: radial-gradient(ellipse 80% 14% at 50% 50%, var(--pool), transparent 70%);
   }
   .spine svg { width: 52px; height: auto; display: block; }
+  .floor-sign {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 14px; color: var(--ink);
+    background: var(--wall); border-top: 6px solid var(--wall-cap); border-bottom: 3px solid var(--wall-cap);
+  }
+  .floor-sign b { background: var(--ink); color: var(--panel); padding: 2px 10px; border-radius: 6px; }
+  .floor-sign span { margin-left: auto; color: var(--muted); font-size: 12px; }
   .exit { background: #1f9d55; color: #fff; font: 700 10px/1 system-ui, sans-serif; padding: 4px 6px; border-radius: 3px; letter-spacing: .06em; box-shadow: 0 0 10px rgba(31, 157, 85, .45); }
   .floor-label { font: 700 11px/1 system-ui, sans-serif; color: var(--muted); writing-mode: vertical-rl; letter-spacing: .2em; }
 
@@ -1091,7 +1097,8 @@
 
   function roomsView() {
     return (data && data.rooms || []).map(function (r) {
-      return { no: r.no, name: r.name, key: r.key, label: r.isOther ? r.name + ' 라운지' : r.name, kind: r.isOther ? 'lounge' : 'meeting' };
+      var label = r.label || r.name;
+      return { no: r.no, name: r.name, key: r.key, machine: r.machine || '', label: r.isOther ? label + ' 라운지' : label, kind: r.isOther ? 'lounge' : 'meeting' };
     });
   }
 
@@ -1105,7 +1112,7 @@
     var spine = k >= 2;
     var sessions = data.sessions || [];
     var hour = new Date(now).getHours();
-    var key = JSON.stringify([k, hour, data.rooms, data.meetings || [], sessions.map(function (s) {
+    var key = JSON.stringify([k, hour, data.rooms, data.meetings || [], (data.machines || []).map(function (m) { return [m.name, Math.floor((now - m.generatedAt) / 60000)]; }), sessions.map(function (s) {
       return [s.id, s.room, s.state, s.title, s.lastPrompt && !s.title ? s.lastPrompt : '', s.quiet, s.startedAt, (s.subagents || []).map(function (a) { return a.type; })];
     })]);
     var meetingFor = {};
@@ -1113,27 +1120,46 @@
     if (key === lastScene) { tickClocks(now); return; }
     lastScene = key;
 
+    // 이 컴퓨터의 방 다음에, 다른 컴퓨터마다 "층 안내판" 한 줄과 그 컴퓨터의 방들을 붙인다.
     var rooms = roomsView();
-    var rows = [];
-    for (var i = 0; i < rooms.length; i += k) rows.push(rooms.slice(i, i + k));
+    var groups = [];
+    rooms.forEach(function (r) {
+      var g = groups[groups.length - 1];
+      if (!g || g.machine !== r.machine) { g = { machine: r.machine, rooms: [] }; groups.push(g); }
+      g.rooms.push(r);
+    });
+    var rows = [];   // { rooms: [...], gridRow } 또는 { sign: 컴퓨터, gridRow }
+    var gridRow = 1;
+    groups.forEach(function (g) {
+      if (g.machine) { rows.push({ sign: g.machine, gridRow: gridRow }); gridRow += 1; }
+      for (var i = 0; i < g.rooms.length; i += k) { rows.push({ rooms: g.rooms.slice(i, i + k), gridRow: gridRow }); gridRow += 2; }
+    });
     var cols = (spine ? '64px ' : '') + 'repeat(' + k + ', minmax(0, 1fr))';
     var c0 = spine ? 2 : 1;
     var html = '<div class="floorplan' + (k === 1 ? ' narrow' : '') + '" style="grid-template-columns:' + cols + '">';
     if (spine) {
-      html += '<div class="spine" style="grid-row:1 / span ' + (rows.length * 2) + ';grid-column:1">' + ELEVATOR +
+      html += '<div class="spine" style="grid-row:1 / span ' + (gridRow - 1) + ';grid-column:1">' + ELEVATOR +
         '<span class="floor-label">AI 오피스 3층</span>' + '<span class="exit">EXIT ▸</span></div>';
     }
-    rows.forEach(function (row, ri) {
+    var corridorNo = 0;
+    rows.forEach(function (rowInfo) {
+      if (rowInfo.sign) {
+        var m = (data.machines || []).filter(function (x) { return x.name === rowInfo.sign; })[0];
+        var ageText = m ? (ago(m.generatedAt, now) || '0초') + ' 전 동기화' : '';
+        html += '<div class="floor-sign" style="grid-row:' + rowInfo.gridRow + ';grid-column:' + c0 + ' / span ' + k + '"><b>' + esc(rowInfo.sign) + '</b> 층<span>' + esc(ageText) + '</span></div>';
+        return;
+      }
+      var row = rowInfo.rooms, ri = corridorNo++, gr = rowInfo.gridRow;
       for (var ci = 0; ci < k; ci++) {
         var room = row[ci] || { no: '—', name: '자료실', label: '자료실', kind: 'storage' };
         var list = row[ci] ? (data.sessions || []).filter(function (s) { return s.room === room.name; }) : [];
         var mt = row[ci] ? meetingFor[room.name] || null : null;
         var alert = list.some(function (s) { return s.state === 'approval' || s.state === 'question'; }) || !!(mt && mt.waitingForUser);
         var enter = row[ci] ? ' data-room="' + esc(room.name) + '" tabindex="0" role="button" aria-label="' + esc(room.no + ' ' + room.name + ' 회의실 들어가기') + '"' : '';
-        html += '<div class="room-cell' + (alert ? ' alert' : '') + (row[ci] ? '' : ' storage') + '"' + enter + ' style="grid-row:' + (ri * 2 + 1) + ';grid-column:' + (c0 + ci) + '">' +
+        html += '<div class="room-cell' + (alert ? ' alert' : '') + (row[ci] ? '' : ' storage') + '"' + enter + ' style="grid-row:' + gr + ';grid-column:' + (c0 + ci) + '">' +
           roomSvg(room, list, room.kind, now, mt) + (row[ci] ? '<div class="pbs"></div>' : '') + '</div>';
       }
-      html += '<div class="corridor" style="grid-row:' + (ri * 2 + 2) + ';grid-column:' + c0 + ' / span ' + k + '">' + corridorHtml(k, k, ri) + '</div>';
+      html += '<div class="corridor" style="grid-row:' + (gr + 1) + ';grid-column:' + c0 + ' / span ' + k + '">' + corridorHtml(k, k, ri) + '</div>';
     });
     html += '</div>';
     office.innerHTML = html;
@@ -1230,7 +1256,9 @@
     }).join('');
     var live = sessions.filter(function (s) { return s.state !== 'ended'; }).length;
     var workers = sessions.reduce(function (a, s) { return a + (s.state !== 'ended' ? (s.subagents || []).length : 0); }, 0);
-    document.getElementById('sub').textContent = '세션 ' + live + '개' + (workers ? ' · 워커 ' + workers + '명' : '') + ' · 마지막 기록 ' + (ago(data.generatedAt, now) || '0초') + ' 전';
+    var syncText = (data.machines || []).map(function (m) { return m.name + ' ' + (ago(m.generatedAt, now) || '0초') + ' 전'; }).join(', ');
+    if (data.sync && data.sync.ok === false) syncText += (syncText ? ' · ' : '') + '동기화 오류';
+    document.getElementById('sub').textContent = '세션 ' + live + '개' + (workers ? ' · 워커 ' + workers + '명' : '') + ' · 마지막 기록 ' + (ago(data.generatedAt, now) || '0초') + ' 전' + (syncText ? ' · ' + syncText : '');
     document.getElementById('live').className = 'live' + (now - lastLoadOk < 10000 ? '' : ' off');
     document.title = (waiting ? '(' + waiting + ') ' : '') + '업무방 현황판';
 

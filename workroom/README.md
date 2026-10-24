@@ -20,6 +20,32 @@ node workroom/deploy.js
 - 방 목록은 `~/.claude/workroom/rooms.json`에서 바꿔요. 세션의 작업 폴더가 `paths` 아래에 있으면 그 방에 앉아요. 어느 방에도 안 맞으면 "기타" 라운지로 가요.
 - 훅 빼기: `node ~/.claude/workroom/install-hooks.js --uninstall`
 
+## 다른 컴퓨터 세션도 같이 보기
+
+다른 컴퓨터(예: 회사 노트북)의 세션을 이 현황판에 "<컴퓨터 이름> 층"으로 함께 보여 줄 수 있어요. 주고받는 길은 **비공개** git 저장소예요. 이 저장소는 공개라서 기록을 여기에 올리면 안 돼요.
+
+- 보내는 컴퓨터는 자기 기록(세션 상태, 말, 회의록) 스냅숏을 저장소의 `m/<컴퓨터 키>` 브랜치에 최대 1분에 한 번 덮어써요. 커밋 1개만 유지해서 기록이 쌓이지 않아요.
+- 받는 컴퓨터는 1분마다 다른 컴퓨터 브랜치를 받아 와요. 받은 기록은 `~/.claude/workroom/remote/`에 들어가요.
+- 보내는 컴퓨터에서는 방 목록을 따로 정하지 않아도 돼요(`--auto-rooms`). 세션의 프로젝트 폴더(가장 바깥 git 저장소, 없으면 작업 폴더) 이름으로 방이 생겨요.
+- 회사 컴퓨터에서 보낼 때는 업무 대화 내용이 개인 저장소로 나간다는 점을 회사 보안 규정과 함께 확인하세요.
+
+보내는 쪽 (git, Node.js, 비공개 저장소에 접근할 GitHub 로그인이 필요해요):
+
+```sh
+git clone -b workroom-dashboard https://github.com/chunryou-delicate/ai-news.git
+cd ai-news
+node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소 주소> --push --auto-rooms
+```
+
+받는 쪽 (Windows에서는 `--schedule`로 1분마다 받기를 작업 스케줄러에 등록해요):
+
+```sh
+node workroom/deploy.js --machine "집 컴퓨터" --sync <비공개 저장소 주소> --pull --schedule
+```
+
+- 끄기: `~/.claude/workroom/sync.json` 지우기, 작업 스케줄러는 `node workroom/deploy.js --no-hooks --unschedule`
+- 동기화 결과는 `~/.claude/workroom/sync-status.json`, 오류는 `error.log`에 남아요
+
 ## 파일
 
 | 파일 | 하는 일 |
@@ -28,7 +54,8 @@ node workroom/deploy.js
 | `install-hooks.js` | `~/.claude/settings.json`에 훅을 넣거나(`--uninstall`이면 빼기) |
 | `현황판.html` | 현황판 화면. `file://`로 열어도 되도록 데이터를 `<script>`로 1.5초마다 다시 읽어요 |
 | `rooms.json` | 회의실(프로젝트 폴더) 목록 |
-| `deploy.js` | 이 폴더의 코드를 `~/.claude/workroom`에 복사하고 훅 설치 |
+| `sync.js` | 다른 컴퓨터와 비공개 git 저장소로 기록 주고받기 (`sync.json` 설정) |
+| `deploy.js` | 이 폴더의 코드를 `~/.claude/workroom`에 복사하고 훅 설치. 동기화 설정과 작업 스케줄러 등록도 해요 |
 
 ## 기록이 쌓이는 곳 (`~/.claude/workroom/`, 저장소에는 안 올라감)
 

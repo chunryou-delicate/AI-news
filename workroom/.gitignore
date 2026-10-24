@@ -13,3 +13,12 @@ error.log
 settings.backup-*.json
 _test.html
 *.tmp
+# 다른 컴퓨터와 주고받기 (sync.js)
+sync.json
+sync-status.json
+sync.pending
+sync.lock
+sync-hidden.vbs
+sync-out/
+sync-in/
+remote/
