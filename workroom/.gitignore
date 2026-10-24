@@ -1,0 +1,15 @@
+# 현황판이 돌면서 만드는 기록 (대화 내용이 들어 있으니 올리지 않는다)
+sessions/
+minutes/
+logs/
+meetings/
+screenshots/
+state.js
+speech.js
+title-cache.json
+meetings-cache.json
+meetings.lock
+error.log
+settings.backup-*.json
+_test.html
+*.tmp

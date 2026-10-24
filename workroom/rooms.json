@@ -1,0 +1,13 @@
+{
+  "rooms": [
+    { "no": "10", "name": "AI news", "paths": ["C:/Users/pc/Desktop/AI news"] },
+    { "no": "20", "name": "New world", "paths": ["C:/Users/pc/Desktop/New world"] },
+    { "no": "30", "name": "빛식물", "paths": ["C:/Users/pc/Desktop/빛식물"] },
+    { "no": "40", "name": "모두의창업", "paths": ["C:/Users/pc/Desktop/모두의창업"] },
+    { "no": "50", "name": "shorts", "paths": ["C:/Users/pc/Desktop/shorts"] },
+    { "no": "60", "name": "주식", "paths": ["C:/Users/pc/Desktop/주식"] },
+    { "no": "70", "name": "검은사막 물교", "paths": ["C:/Users/pc/Desktop/물교"] },
+    { "no": "80", "name": "유튜브", "paths": ["C:/Users/pc/Desktop/유튜브"] }
+  ],
+  "otherRoom": { "no": "99", "name": "기타" }
+}
