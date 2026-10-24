@@ -552,11 +552,11 @@
     for (var i = 0; i < k; i++) xs.push(n(w / 2 + (i - (k - 1) / 2) * 45));
     return { W: w, H: h, WALL: 52, TT: n(118 + (h - 236) * 0.55), TH: 38, FRONT: h - 20, SEAT_X: xs, DOOR_L: w - 58, DOOR_R: w - 16 };
   }
-  // 한 줄 자리 수: 사람(세션+워커) 수에 맞춰 4~6자리 (방 하나에 최대 12명). 평면도와 회의실 안이 같은 값을 쓴다.
+  // 한 줄 자리 수: 사람(세션+워커) 수에 맞춰 4~7자리 (방 하나에 최대 14명). 평면도와 회의실 안이 같은 값을 쓴다.
   function seatsPerRow(list, kind, meeting) {
     if (kind === 'storage') return 4;
     var pre = layoutRoom(list, kind, meeting);
-    return Math.max(4, Math.min(6, Math.ceil((pre.mains.length + pre.workers.length) / 2)));
+    return Math.max(4, Math.min(7, Math.ceil((pre.mains.length + pre.workers.length) / 2)));
   }
   // 회의실 안: 줄마다 k 자리를 넓게 띄우고, 위아래로 말풍선 9줄이 들어갈 자리를 둔다.
   function interiorGeo(k) {
