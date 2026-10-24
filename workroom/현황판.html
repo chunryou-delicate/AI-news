@@ -184,6 +184,9 @@
   .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
   .chip.hot { border-color: var(--approval); color: var(--approval); font-weight: 600; }
   .theme-btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 10px; cursor: pointer; font-size: 13px; }
+  .viewseg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+  .viewseg button { border: 0; background: transparent; padding: 5px 11px; cursor: pointer; font-size: 13px; color: var(--muted); }
+  .viewseg button.on { background: var(--ink); color: var(--panel); font-weight: 700; }
 
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
   .layout > * { min-width: 0; }
@@ -449,6 +452,9 @@
       <p id="sub">기록을 불러오는 중…</p>
     </div>
     <div class="chips" id="chips"></div>
+    <div class="viewseg" role="group" aria-label="보기 크기">
+      <button type="button" data-view="auto" title="화면 폭에 맞춰서">자동</button><button type="button" data-view="one" title="한 줄에 방 1개씩 크게">크게</button><button type="button" data-view="all" title="한 줄에 방 3개씩 줄여서 한눈에">작게</button>
+    </div>
     <button class="theme-btn" id="themeBtn" type="button" aria-label="밝게/어둡게 바꾸기">◐</button>
   </div>
   <div id="banner"></div>
@@ -1102,14 +1108,22 @@
     });
   }
 
+  // 보기 크기: auto(폭에 맞춰서), one(한 줄에 1개 크게), all(한 줄에 3개 줄여서 한눈에)
+  var viewMode = 'auto';
+  try { viewMode = localStorage.getItem('workroom-view') || 'auto'; } catch (_) {}
   function columns() {
+    if (viewMode === 'one') return 1;
+    if (viewMode === 'all') return 3;
     var w = office.clientWidth || window.innerWidth;
     return w >= 900 ? 3 : w >= 540 ? 2 : 1;
+  }
+  function markView() {
+    document.querySelectorAll('.viewseg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === viewMode); });
   }
 
   function renderOffice(now, meetings) {
     var k = columns();
-    var spine = k >= 2;
+    var spine = k >= 2 && (office.clientWidth || window.innerWidth) >= 640;
     var sessions = data.sessions || [];
     var hour = new Date(now).getHours();
     var key = JSON.stringify([k, hour, data.rooms, data.meetings || [], (data.machines || []).map(function (m) { return [m.name, Math.floor((now - m.generatedAt) / 60000)]; }), sessions.map(function (s) {
@@ -1136,7 +1150,10 @@
     });
     var cols = (spine ? '64px ' : '') + 'repeat(' + k + ', minmax(0, 1fr))';
     var c0 = spine ? 2 : 1;
-    var html = '<div class="floorplan' + (k === 1 ? ' narrow' : '') + '" style="grid-template-columns:' + cols + '">';
+    // 복도 높이(화분·정수기 크기)도 방 폭에 맞춰 줄인다.
+    var cellW = ((office.clientWidth || window.innerWidth) - 14 - (spine ? 68 : 0)) / k;
+    var corrH = Math.max(26, Math.min(66, Math.round(cellW * 0.2)));
+    var html = '<div class="floorplan" style="grid-template-columns:' + cols + ';--corr-h:' + corrH + 'px">';
     if (spine) {
       html += '<div class="spine" style="grid-row:1 / span ' + (gridRow - 1) + ';grid-column:1">' + ELEVATOR +
         '<span class="floor-label">AI 오피스 3층</span>' + '<span class="exit">EXIT ▸</span></div>';
@@ -1678,6 +1695,15 @@
       return;
     }
     if (e.target.closest('#saveMin')) { saveMinutes(); return; }
+    var vb = e.target.closest('.viewseg button');
+    if (vb) {
+      viewMode = vb.getAttribute('data-view');
+      try { localStorage.setItem('workroom-view', viewMode); } catch (_) {}
+      markView();
+      lastScene = '';
+      render();
+      return;
+    }
     var t = e.target.closest('[data-id]');
     if (t) openSheet(t.getAttribute('data-id'));
   });
@@ -1718,6 +1744,7 @@
     return '<span><i style="background:' + STATE[k].color + '"></i>' + STATE[k].label + '</span>';
   }).join('');
 
+  markView();
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
