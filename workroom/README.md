@@ -27,6 +27,14 @@ node workroom/deploy.js
 - 현황판 화면과 그 화면이 읽는 파일만 내보내고, 열쇠가 맞아야 열려요. 한 번 열면 30일 동안 기억해요.
 - PC를 켤 때마다 자동으로 띄우려면 시작프로그램 폴더에 숨김 실행 스크립트를 두면 돼요.
 
+## 밖에서 폰으로 보기 (Cloudflare 임시 터널)
+
+`bin/cloudflared(.exe)`(Cloudflare 공식 배포본)를 두고 `node ~/.claude/workroom/tunnel.js`를 띄우면 server.js 화면을 https://…trycloudflare.com 바깥 주소로 이어 줘요. 열쇠가 있어야 열리는 건 같아요.
+
+- 임시 터널이라 다시 띄울 때마다 주소가 바뀌어요. 새 주소가 나오면 `tunnel.json`에 적고, 동기화용 비공개 저장소 main 브랜치의 `LINK.md`에도 링크를 적어 둬요. 폰의 GitHub에서 그 파일을 열면 늘 지금 링크가 있어요.
+- `node tunnel.js --link`로 지금 링크를 볼 수 있어요.
+- 링크(열쇠 포함)를 아는 사람은 누구나 볼 수 있으니 남에게 보내지 마세요. 열쇠를 바꾸려면 `server.json`을 지우고 server.js 와 tunnel.js 를 다시 띄우세요.
+
 ## 다른 컴퓨터 세션도 같이 보기
 
 다른 컴퓨터(예: 회사 노트북)의 세션을 이 현황판에 "<컴퓨터 이름> 층"으로 함께 보여 줄 수 있어요. 주고받는 길은 **비공개** git 저장소예요. 이 저장소는 공개라서 기록을 여기에 올리면 안 돼요.
@@ -62,6 +70,7 @@ node workroom/deploy.js --machine "집 컴퓨터" --sync <비공개 저장소 �
 | `현황판.html` | 현황판 화면. `file://`로 열어도 되도록 데이터를 `<script>`로 1.5초마다 다시 읽어요 |
 | `rooms.json` | 회의실(프로젝트 폴더) 목록 |
 | `server.js` | 같은 와이파이의 폰에서 보는 작은 웹 서버 (열쇠가 있어야 열림) |
+| `tunnel.js` | 밖에서 보기용 Cloudflare 임시 터널을 띄우고, 바뀐 링크를 비공개 저장소 LINK.md 에 적음 |
 | `sync.js` | 다른 컴퓨터와 비공개 git 저장소로 기록 주고받기 (`sync.json` 설정) |
 | `deploy.js` | 이 폴더의 코드를 `~/.claude/workroom`에 복사하고 훅 설치. 동기화 설정과 작업 스케줄러 등록도 해요 |
 

@@ -25,3 +25,10 @@ remote/
 # 폰에서 보기 서버 (server.js) 열쇠
 server.json
 server-hidden.vbs
+# 밖에서 보기 (tunnel.js)
+bin/
+tunnel.json
+tunnel.pid
+tunnel.log
+tunnel-hidden.vbs
+link-repo/
