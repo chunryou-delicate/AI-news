@@ -42,6 +42,12 @@
     var BED_HIP = 0.62;              // 누웠을 때 엉덩이 뼈 높이 (침대 윗면 0.5)
     var SLEEP_AFTER = 30 * 60000;    // 이만큼 넘게 쉬면 수면실에서 잔다
     var WALL_H = 2.3, LOW_H = 1.0, WALL_T = 0.1;
+    var CW_H = 3.0, CW_GLASS = 2.55, CW_MOD = 1.5, CW_SPAN = 9;   // 바깥 커튼월: 높이, 유리 윗선(그 위는 층 슬래브 띠), 멀리언 간격, 유리 그림 한 장 폭
+    var PLATE_H = 0.5, PLATE_Y = 1.3;   // 유리 명패: 1배일 때 높이(m), 가운데 높이
+    var PLATE_PPM = 256, PLATE_CW = 1024, PLATE_CH = 128;   // 명패 그림: 1m 에 256px
+    var PLATE_MIN_PX = 22;              // 명패가 화면에서 이보다 낮게 보이면 유리 안에서 키운다 (이름 글씨 10px 쯤)
+    var TAG_DESK_Y = 1.18;              // 책상에 앉은 사람 이름표 높이 (머리 옆). 모두 같은 높이라 한 줄로 가지런하다
+    var TAG_FONT = 9, TAG_PAD = 10;     // 이름표 글씨 크기(px), 글씨 밖 폭(왼쪽 띠·안쪽 여백, 현황판.html 의 .o3-tag 와 맞춘다)
     var SEAT_HIP = 0.63;             // 앉았을 때 엉덩이 뼈 높이 (의자 윗면 0.49)
     var SEAT_FWD = 0.12;             // 앉았을 때 엉덩이를 의자 가운데에서 탁자 쪽으로 당기는 거리 (소파 등)
     // 책상 의자에서는 동작마다 다르게: 쉬며 앉아 있을 때(sit)는 무릎에 팔을 대고 푹 숙이는 순간이 있어서 조금 뒤로
@@ -93,7 +99,6 @@
     };
     var COMMON = { screenOff: '#3d4650', screenOn: '#c6ecff', board: '#ffffff', boardInk: '#2b3743', boardMuted: '#6b7178', plant: '#62b56f', plantDark: '#469a5a' };
     var PAL = Object.assign({}, COMMON, THEMES.pastel);
-    var SKY = { day: '#bfe3f7', dusk: '#f2b48c', night: '#2c4170' };
     var PANTS = ['#2d3440', '#3b4a5e', '#5a4a3c', '#26303a', '#6b6f78', '#4a4f57'];
     // 자세 → 메시 동작
     var CLIP_FOR = { walk: 'walk', stand: 'idle', sit: 'sit', lounge: 'sit', type: 'type', sofa: 'sitDrink', doze: 'doze', sleep: 'sleep', cup: 'drink', raise: 'wave', ask: 'ask', slump: 'headache', present: 'present' };
@@ -444,6 +449,104 @@
         t.encoding = T.sRGBEncoding;
         return t;
       }
+      // 커튼월 유리에 비치는 바깥: 위는 짙고 아래는 옅은 하늘, 먼 빌딩 두 겹(밤에는 불 켜진 창), 비스듬한 반사광.
+      // 그림 한 장이 CW_SPAN(9m) 폭이고 벽을 따라 되풀이한다. 늘 같은 그림이 나오게 난수 씨앗을 고정한다.
+      function skylineTexture(kind) {
+        var c = document.createElement('canvas'), W2 = 1024, H2 = 256;
+        c.width = W2; c.height = H2;
+        var x = c.getContext('2d');
+        // [하늘 위, 하늘 아래, 먼 빌딩, 가까운 빌딩, 불 켜진 창(없으면 안 그림), 반사광]
+        var SK = {
+          day: ['#8fc6ea', '#e2f1fa', '#c3d6e4', '#a9c0d2', null, 'rgba(255,255,255,0.16)'],
+          dusk: ['#d98a72', '#f7d2aa', '#d3a493', '#bb8d82', 'rgba(255,226,170,0.7)', 'rgba(255,236,210,0.14)'],
+          night: ['#16234a', '#34487c', '#26325a', '#1b2445', 'rgba(255,214,120,0.85)', 'rgba(200,215,255,0.07)']
+        }, S = SK[kind] || SK.day;
+        var gr = x.createLinearGradient(0, 0, 0, H2);
+        gr.addColorStop(0, S[0]);
+        gr.addColorStop(1, S[1]);
+        x.fillStyle = gr;
+        x.fillRect(0, 0, W2, H2);
+        var seed = 11;
+        function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+        [[S[2], 0.34, 0.62], [S[3], 0.16, 0.38]].forEach(function (L) {
+          for (var bx = -10; bx < W2; ) {
+            var bw = 34 + rnd() * 80, bh = Math.round(H2 * (L[1] + rnd() * (L[2] - L[1])));
+            x.fillStyle = L[0];
+            x.fillRect(Math.round(bx), H2 - bh, Math.round(bw), bh);
+            if (S[4]) {
+              x.fillStyle = S[4];
+              for (var wy = H2 - bh + 8; wy < H2 - 6; wy += 11) for (var wx = bx + 6; wx < bx + bw - 6; wx += 10) if (rnd() < 0.35) x.fillRect(Math.round(wx), wy, 4, 5);
+            }
+            bx += bw + 4 + rnd() * 18;
+          }
+        });
+        x.fillStyle = S[5];
+        [[120, 70], [470, 46], [760, 90]].forEach(function (r) {
+          x.beginPath();
+          x.moveTo(r[0], 0); x.lineTo(r[0] + r[1], 0); x.lineTo(r[0] + r[1] - 150, H2); x.lineTo(r[0] - 150, H2);
+          x.closePath();
+          x.fill();
+        });
+        var t = new T.CanvasTexture(c);
+        t.wrapS = T.RepeatWrapping;
+        t.anisotropy = aniso;
+        t.encoding = T.sRGBEncoding;
+        return t;
+      }
+      // 둥근 네모 길 (canvas roundRect 가 없는 브라우저도 있어서 직접)
+      function rrect(x, l, t, w, h, r) {
+        x.beginPath();
+        x.moveTo(l + r, t);
+        x.arcTo(l + w, t, l + w, t + h, r);
+        x.arcTo(l + w, t + h, l, t + h, r);
+        x.arcTo(l, t + h, l, t, r);
+        x.arcTo(l, t, l + w, t, r);
+        x.closePath();
+      }
+      // 명패 글씨: [번호] 이름. 왼쪽 띠는 방 상태 색, 승인 대기 같은 알림이면 테두리를 그 색으로.
+      function drawPlate(pl, no, name, color, alert) {
+        var key = [no, name, color, alert].join('|');
+        if (pl.key === key) return;
+        pl.key = key;
+        var c = pl.tc.canvas, x = c.getContext('2d'), H = c.height;
+        x.clearRect(0, 0, c.width, H);
+        x.textBaseline = 'middle';
+        x.font = '800 60px ' + FONT;
+        var nw = no ? x.measureText(no).width + 20 : 0, padL = 40, padR = 32;
+        x.font = '800 70px ' + FONT;
+        var maxW = Math.min(c.width, Math.floor(pl.room * PLATE_PPM)) - padL - padR - nw;
+        var w = Math.ceil(padL + nw + Math.min(x.measureText(name).width, maxW) + padR);
+        x.save();
+        rrect(x, 2, 2, w - 4, H - 4, 18);
+        x.fillStyle = 'rgba(255,255,255,0.95)';
+        x.fill();
+        x.clip();
+        x.fillStyle = color || '#8f969d';
+        x.fillRect(0, 0, 16, H);
+        x.restore();
+        rrect(x, 3, 3, w - 6, H - 6, 17);
+        x.lineWidth = alert ? 8 : 3;
+        x.strokeStyle = alert ? color || '#e5534b' : 'rgba(70,80,92,0.3)';
+        x.stroke();
+        // 위에서 비스듬히 보면 세로가 눌려 보여서 글씨만 세로로 조금 늘려 쓴다
+        x.save();
+        x.translate(0, H / 2 + 3);
+        x.scale(1, 1.25);
+        if (no) {
+          x.font = '800 60px ' + FONT;
+          x.fillStyle = '#8a929c';
+          x.fillText(no, padL, 0);
+        }
+        x.font = '800 70px ' + FONT;
+        x.fillStyle = '#1f2328';
+        fillFit(x, name, padL + nw, 0, maxW);
+        x.restore();
+        pl.w = w / PLATE_PPM;
+        pl.maxS = Math.max(1, Math.min((pl.room - 0.2) / pl.w, 1.3 / PLATE_H));
+        pl.tc.tex.repeat.set(w / c.width, 1);
+        pl.tc.tex.needsUpdate = true;
+        pl.mesh.scale.x = pl.w;
+      }
       function textCanvas(w, h) {
         var c = document.createElement('canvas');
         c.width = w;
@@ -545,12 +648,15 @@
           sofa: lam(P.sofa), sofaSeat: lam(P.sofaSeat), laptop: lam(P.laptop), screenOff: basic(P.screenOff), screenOn: basic(P.screenOn),
           frame: lam(P.frame), plant: lam(P.plant), plantDark: lam(P.plantDark), pot: lam(P.pot), metal: lam(P.metal), counter: lam(P.counter),
           rug: lam(P.rug), desk: lam(P.desk), mat: lam(P.mat), carpet: lam(P.carpet), lounge: lam(P.lounge),
-          sky: basic(SKY[skyKind(s.hour)]), dark: lam('#3a414a'), white: lam('#ffffff'), cooler: lam('#e8f0f6'), water: lam('#8fd0f2'), led: basic('#ff8a4c'),
+          dark: lam('#3a414a'), white: lam('#ffffff'), cooler: lam('#e8f0f6'), water: lam('#8fd0f2'), led: basic('#ff8a4c'),
           seats: P.seats.map(function (c) { return lam(c); }),
           ceoFloor: lam(shade(P.lobby, 0.92)), napFloor: lam(shade(P.carpet, 0.62)), vending: lam(P.seats[0]), fridge: lam('#e9eef2'),
-          glass: new T.MeshLambertMaterial({ color: P.glass, transparent: true, opacity: 0.22, depthWrite: false, side: T.DoubleSide })
+          mullion: lam(shade(P.cap, 0.72)), spandrel: lam(shade(P.cap, 0.5)), gold: lam('#d8b24a'), felt: lam('#2f7d5b'), fish: lam('#f08a3c'),
+          bulb: basic('#fff1d2'), menu: lam('#2f3a35'), curtain: lam(shade(P.counter, 0.97)), fruit: [lam('#f2b134'), lam('#e05a4f'), lam('#7fb069')],
+          glass: new T.MeshLambertMaterial({ color: P.glass, transparent: true, opacity: 0.22, depthWrite: false, side: T.DoubleSide }),
+          tank: new T.MeshLambertMaterial({ color: '#7fcbe8', transparent: true, opacity: 0.42, depthWrite: false })
         };
-        trash.push(M.glass);
+        trash.push(M.glass, M.tank);
         var root = new T.Group(), keep = new T.Group(), dyn = new T.Group();
         function box(w, h, d, m, x, y, z, parent) { return mesh(G.box, m, w, h, d, x, y, z, parent || root); }
         function plant(x, z, sc) {
@@ -611,6 +717,78 @@
           dyn.add(grp);
           return { grp: grp, scr: scr };
         }
+        // 명패: 유리벽(xa~xb, 앞면 z)에 붙이는 이름판. 글씨는 drawPlate 가 쓰고, 크기는 fitPlates 가 화면에 맞춰 키운다.
+        function makePlate(xa, xb, z) {
+          var tc = textCanvas(PLATE_CW, PLATE_CH);
+          var m = new T.MeshBasicMaterial({ map: tc.tex, transparent: true, depthWrite: false });
+          trash.push(m, tc.tex);
+          var pl = { tc: tc, x: (xa + xb) / 2, z: z + 0.07, room: xb - xa, w: 1, maxS: 1, key: '', small: false };
+          pl.mesh = mesh(G.plane, m, 1, PLATE_H, 1, pl.x, PLATE_Y, pl.z, dyn);
+          pl.mesh.renderOrder = 2;
+          W.plates.push(pl);
+          return pl;
+        }
+
+        // ---------- 꾸밈 가구 (아래쪽 방·탕비실). 모두 root 에 넣어 재료별로 합친다 ----------
+        function grp(x, z, yaw) {   // 돌려 놓는 가구 묶음. yaw 0 이면 앞(앉은 사람이 보는 쪽)이 +z
+          var g = new T.Group();
+          g.position.set(x, 0, z);
+          g.rotation.y = yaw || 0;
+          root.add(g);
+          return g;
+        }
+        function seatChair(x, z, yaw, mat) {
+          var g = grp(x, z, yaw);
+          box(0.44, 0.06, 0.44, mat, 0, 0.46, 0, g);
+          box(0.44, 0.42, 0.06, mat, 0, 0.72, -0.2, g);
+          box(0.04, 0.44, 0.04, M.metal, 0, 0.22, 0, g);
+          box(0.42, 0.03, 0.06, M.chair, 0, 0.02, 0, g);
+          box(0.06, 0.03, 0.42, M.chair, 0, 0.02, 0, g);
+        }
+        function roundTable(x, z, d, h) {
+          mesh(G.cyl, M.table, d, 0.05, d, x, h, z, root);
+          mesh(G.cyl, M.metal, 0.07, h, 0.07, x, h / 2, z, root);
+          mesh(G.cyl, M.metal, d * 0.55, 0.03, d * 0.55, x, 0.015, z, root);
+        }
+        function stool(x, z, mat) {
+          mesh(G.cyl, mat, 0.36, 0.06, 0.36, x, 0.7, z, root);
+          mesh(G.cyl, M.metal, 0.05, 0.68, 0.05, x, 0.34, z, root);
+          mesh(G.cyl, M.metal, 0.32, 0.03, 0.32, x, 0.015, z, root);
+        }
+        function floorLamp(x, z) {
+          mesh(G.cyl, M.metal, 0.28, 0.03, 0.28, x, 0.015, z, root);
+          mesh(G.cyl, M.metal, 0.03, 1.45, 0.03, x, 0.74, z, root);
+          mesh(G.cyl, M.bulb, 0.36, 0.26, 0.36, x, 1.55, z, root);
+        }
+        function tree(x, z, sc) {   // 키 큰 화분 나무
+          mesh(G.cyl, M.pot, 0.42 * sc, 0.42 * sc, 0.42 * sc, x, 0.21 * sc, z, root);
+          mesh(G.cyl, M.tableEdge, 0.06 * sc, 0.9 * sc, 0.06 * sc, x, 0.8 * sc, z, root);
+          mesh(G.ico, M.plant, 0.8 * sc, 0.75 * sc, 0.8 * sc, x, 1.35 * sc, z, root);
+          mesh(G.ico, M.plantDark, 0.55 * sc, 0.5 * sc, 0.55 * sc, x - 0.18 * sc, 1.12 * sc, z + 0.12 * sc, root);
+          mesh(G.ico, M.plant, 0.5 * sc, 0.48 * sc, 0.5 * sc, x + 0.16 * sc, 1.72 * sc, z - 0.08 * sc, root);
+        }
+        function rug(x, z, w, d, m) { box(w, 0.008, d, m || M.rug, x, 0.016, z); }
+        function armchairAt(g) {   // armchair 와 같은 모양을 묶음 g 안에 (앞 = +z)
+          box(0.7, 0.4, 0.62, M.sofa, 0, 0.2, 0, g);
+          box(0.62, 0.1, 0.56, M.sofaSeat, 0, 0.44, 0.02, g);
+          box(0.7, 0.5, 0.16, M.sofa, 0, 0.62, -0.28, g);
+          box(0.12, 0.2, 0.6, M.sofa, -0.32, 0.5, 0, g);
+          box(0.12, 0.2, 0.6, M.sofa, 0.32, 0.5, 0, g);
+        }
+        function sofaAt(g, len) {   // 길이 len 소파를 묶음 g 안에 (앞 = +z)
+          box(len, 0.4, 0.8, M.sofa, 0, 0.2, 0, g);
+          box(len - 0.1, 0.1, 0.7, M.sofaSeat, 0, 0.44, 0.05, g);
+          box(len, 0.5, 0.18, M.sofa, 0, 0.62, -0.36, g);
+          box(0.14, 0.22, 0.8, M.sofa, -len / 2 + 0.07, 0.5, 0, g);
+          box(0.14, 0.22, 0.8, M.sofa, len / 2 - 0.07, 0.5, 0, g);
+        }
+        function nook(cx, cz) {   // 깔개 위에 마주 보는 안락의자 둘, 가운데 작은 탁자, 뒤에 스탠드 (폭 2.6 · 깊이 1.8)
+          rug(cx, cz, 2.6, 1.8, M.carpet);
+          armchairAt(grp(cx - 0.85, cz, Math.PI / 2));
+          armchairAt(grp(cx + 0.85, cz, -Math.PI / 2));
+          roundTable(cx, cz, 0.55, 0.45);
+          floorLamp(cx, cz - 0.7);
+        }
 
         // 방 배치: 컴퓨터마다 묶고, 한 줄에 cols 개씩. 다른 컴퓨터가 있으면 컴퓨터마다(이 컴퓨터도) 앞에 층 안내 띠를 둔다.
         var groups = [];
@@ -643,7 +821,7 @@
           }
         });
         var zL = z, lobby = { z0: zL, z1: zL + LOBBY_D };
-        W = { rooms: rooms, rows: rows, zones: zones, lobby: lobby, width: maxX, depth: lobby.z1, laneZ: zL + 0.8, breaks: breaks, labels: labels, cut: [], trash: trash, M: M };
+        W = { rooms: rooms, rows: rows, zones: zones, lobby: lobby, width: maxX, depth: lobby.z1, laneZ: zL + 0.8, breaks: breaks, labels: labels, plates: [], cut: [], trash: trash, M: M };
 
         // 햇빛 그림자가 사무실 전체에 닿게
         var cx0 = maxX / 2, cz0 = lobby.z1 / 2, rad = Math.hypot(maxX, lobby.z1) / 2 + 1;
@@ -741,13 +919,15 @@
             var lampMat = new T.MeshBasicMaterial({ color: '#8f969d' });
             trash.push(lampMat);
             R.lamp = mesh(G.box, lampMat, 0.3, 0.07, 0.07, R.xSide, WALL_H + 0.06, z1 + 0.02, dyn);
+            // 명패: 앞 유리 문 왼쪽 칸 가운데. 너무 멀거나 뒤에서 볼 때만 그 자리에 글자 이름표를 띄운다.
+            R.plate = makePlate(x0 + 0.1, dl - 0.05, z1);
             var el = document.createElement('button');
             el.type = 'button';
             el.className = 'o3-room';
             el.setAttribute('data-room', R.name);
             layer.appendChild(el);
             R.label = el;
-            labels.push({ el: el, x: x0 + w / 2, y: WALL_H + 0.3, z: z1, ax: '-50%', ay: '-100%', room: R.name });
+            labels.push({ el: el, plate: R.plate, ax: '-50%', ay: '-50%', room: R.name });
           });
           // 복도: 방 사이 화분
           var zb = row.z0 + ROOM_D + CORR - 0.35;
@@ -778,6 +958,31 @@
           box(0.6, 0.05, 0.9, M.table, px1 - 1.55, 0.4, pz0 + 3.6);
           box(0.5, 0.36, 0.06, M.tableEdge, px1 - 1.55, 0.2, pz0 + 3.6);
           plant(px0 + 0.45, pz1 - 0.5, 0.9);
+          // 부엌 살림: 위 수납장, 개수대, 전자레인지, 과일 그릇, 정수기, 분리수거함, 높은 탁자와 의자, 소파 앞 깔개
+          box(cw2, 0.62, 0.34, M.counter, px0 + 0.15 + cw2 / 2, 1.88, pz0 + 0.27);
+          for (var cd = 1; cd < 4; cd++) box(0.015, 0.56, 0.01, M.tableEdge, px0 + 0.15 + cw2 * cd / 4, 1.88, pz0 + 0.445);
+          box(cw2 + 0.04, 0.03, 0.36, M.tableEdge, px0 + 0.15 + cw2 / 2, 1.555, pz0 + 0.27);
+          box(0.5, 0.012, 0.36, M.metal, px0 + 2.05, 0.995, pz0 + 0.45);
+          mesh(G.cyl, M.metal, 0.03, 0.26, 0.03, px0 + 2.05, 1.12, pz0 + 0.22, root);
+          box(0.03, 0.03, 0.16, M.metal, px0 + 2.05, 1.24, pz0 + 0.3);
+          box(0.5, 0.3, 0.36, M.white, px0 + 2.7, 1.14, pz0 + 0.38);
+          box(0.3, 0.2, 0.01, M.dark, px0 + 2.64, 1.14, pz0 + 0.565);
+          box(0.08, 0.2, 0.01, M.mullion, px0 + 2.88, 1.14, pz0 + 0.565);
+          box(0.32, 0.95, 0.32, M.cooler, px0 + 0.32, 0.475, pz0 + 3.0);
+          mesh(G.cyl, M.water, 0.24, 0.36, 0.24, px0 + 0.32, 1.13, pz0 + 3.0, root);
+          box(0.12, 0.05, 0.02, M.dark, px0 + 0.32, 0.8, pz0 + 3.17);
+          [M.seats[1], M.seats[3], M.seats[2]].forEach(function (bm, i) {
+            box(0.3, 0.5, 0.3, bm, px0 + 0.28, 0.25, pz0 + 4.0 + i * 0.36);
+            box(0.32, 0.03, 0.32, M.dark, px0 + 0.28, 0.515, pz0 + 4.0 + i * 0.36);
+          });
+          mesh(G.cyl, M.table, 0.66, 0.04, 0.66, px0 + 2.1, 1.02, pz0 + 5.1, root);
+          mesh(G.cyl, M.metal, 0.06, 1.0, 0.06, px0 + 2.1, 0.5, pz0 + 5.1, root);
+          mesh(G.cyl, M.metal, 0.4, 0.03, 0.4, px0 + 2.1, 0.015, pz0 + 5.1, root);
+          mesh(G.cyl, M.white, 0.26, 0.06, 0.26, px0 + 2.1, 1.07, pz0 + 5.1, root);
+          M.fruit.forEach(function (fm, i) { mesh(G.sph, fm, 0.09, 0.09, 0.09, px0 + 2.04 + i * 0.06, 1.12, pz0 + 5.07 + (i % 2) * 0.06, root); });
+          stool(px0 + 2.1, pz0 + 4.62, M.seats[4]);
+          stool(px0 + 2.1, pz0 + 5.58, M.seats[4]);
+          rug(px1 - 1.3, pz0 + 3.6, 1.6, 2.4);
           [0, 1].forEach(function (k) {
             breaks.push({ key: 'pcup' + row.i + k, place: pplace, x: px0 + 0.9 + k * 0.9, ax: px0 + 0.9 + k * 0.9, z: pz0 + 1.25, yaw: Math.PI, pose: 'cup' });
             breaks.push({ key: 'psofa' + row.i + k, place: pplace, x: px1 - 0.6, ax: px1 - 1.2, z: pz0 + 3.6 + (k ? 0.5 : -0.5), yaw: -Math.PI / 2, pose: k ? 'doze' : 'sofa' });
@@ -785,8 +990,11 @@
           var pl = document.createElement('div');
           pl.className = 'o3-room static';
           pl.textContent = '탕비실';
+          pl.style.setProperty('--rc', '#c9925a');
           layer.appendChild(pl);
-          labels.push({ el: pl, x: (px0 + px1) / 2, y: WALL_H + 0.3, z: pz1, ax: '-50%', ay: '-100%', minPpm: 7 });
+          var ppl = makePlate(pdoor + 0.65, px1 - 0.1, pz1);
+          drawPlate(ppl, '', '탕비실', '#c9925a', false);
+          labels.push({ el: pl, plate: ppl, ax: '-50%', ay: '-50%', minPpm: 7 });
         });
 
         // 아래쪽: 엘리베이터 + 대표실 · 휴게실 · 수면실. 세 방은 벽과 문이 있고, 문 앞으로 로비 길(laneZ)이 지난다.
@@ -803,7 +1011,7 @@
 
         var avail = maxX - SPINE, xA = SPINE, xB = xA + avail * 0.36, xC = xB + avail * 0.37, xD = maxX;
         // 벽(아래 벽돌, 위 유리)과 위쪽 문이 있는 방 하나. 카메라 쪽(아래) 벽은 유리만 둔다.
-        function lowerRoom(x0, x1, name, floorMat) {
+        function lowerRoom(x0, x1, name, floorMat, accent) {
           var doorX = x0 + 1.3, Rm = { name: name, x0: x0, x1: x1, z0: rz0, z1: rz1, doorX: doorX };
           box(x1 - x0 - WALL_T, 0.012, rz1 - rz0 - WALL_T, floorMat, (x0 + x1) / 2, 0.007, (rz0 + rz1) / 2);
           wallX(x0, doorX - 0.6, rz0);
@@ -818,19 +1026,27 @@
           var el = document.createElement('div');
           el.className = 'o3-room static';
           el.textContent = name;
+          el.style.setProperty('--rc', accent);
           layer.appendChild(el);
-          labels.push({ el: el, x: (x0 + x1) / 2, y: WALL_H + 0.3, z: rz0, ax: '-50%', ay: '-100%' });
+          // 명패는 카메라 쪽 유리 가운데
+          var pl = makePlate(x0 + 0.3, x1 - 0.3, rz1);
+          drawPlate(pl, '', name, accent, false);
+          labels.push({ el: el, plate: pl, ax: '-50%', ay: '-50%' });
           Rm.place = function (az) { return { t: 'lobby', room: name, door: doorX, az: az }; };
           return Rm;
         }
-        function shelf(x, z, w, rot) {   // 책장 (rot: 벽을 따라 z 방향이면 true)
-          var sw = rot ? 0.4 : w, sd = rot ? w : 0.4;
-          box(sw, 1.9, sd, M.tableEdge, x, 0.95, z);
+        function shelf(x, z, w, rot) {   // 앞이 트인 책장 (rot: 왼쪽 벽을 따라 z 방향이면 true, 앞은 +x. 아니면 뒷벽을 따라, 앞은 +z)
+          var g = grp(x, z, rot ? Math.PI / 2 : 0);
+          box(w, 1.9, 0.03, M.tableEdge, 0, 0.95, -0.185, g);
+          box(0.04, 1.9, 0.4, M.tableEdge, -w / 2 + 0.02, 0.95, 0, g);
+          box(0.04, 1.9, 0.4, M.tableEdge, w / 2 - 0.02, 0.95, 0, g);
+          box(w, 0.04, 0.4, M.tableEdge, 0, 1.88, 0, g);
+          box(w, 0.08, 0.4, M.tableEdge, 0, 0.04, 0, g);
           for (var sy = 0.35; sy < 1.8; sy += 0.42) {
-            box(rot ? 0.42 : w - 0.08, 0.03, rot ? w - 0.08 : 0.42, M.table, x, sy, z);
+            box(w - 0.08, 0.03, 0.38, M.table, 0, sy, 0, g);
             for (var bk = 0; bk < 5; bk++) {
               var off = -w / 2 + 0.2 + bk * (w - 0.3) / 5, mat = M.seats[(bk + Math.round(sy * 10)) % M.seats.length];
-              box(rot ? 0.28 : 0.1, 0.3, rot ? 0.1 : 0.28, mat, rot ? x : x + off, sy + 0.17, rot ? z + off : z);
+              box(0.1, 0.27 + (bk % 3) * 0.02, 0.28, mat, off, sy + 0.16, -0.03, g);
             }
           }
         }
@@ -843,7 +1059,7 @@
         }
 
         // 대표실: 큰 책상과 의자(대표 자리), 책장, 손님 소파. 승인·답변을 기다리는 사람은 책상 앞에 줄을 선다.
-        var ceoR = lowerRoom(xA, xB, '대표실', M.ceoFloor);
+        var ceoR = lowerRoom(xA, xB, '대표실', M.ceoFloor, '#d4a017');
         var dx = xA + (xB - xA) * 0.48, dz = rz0 + 2.9;
         box(3.2, 0.008, 2.6, M.rug, dx, 0.016, dz + 0.1);
         // 책상 윗면 0.745, 대표 의자는 책상 모서리에서 0.47 뒤 (방 책상과 같은 이유로 조금 낮추고 뒤로 뺐다)
@@ -879,11 +1095,86 @@
         box(0.6, 0.36, 0.06, M.tableEdge, xB - 1.75, 0.2, rz1 - 1.7);
         plant(xB - 0.5, rz0 + 0.6, 1.2);
         plant(xA + 0.5, rz1 - 0.5, 1.1);
+        // 대표실 꾸밈 (사람이 다니는 길: 문 → rz0+0.75 → 대표 의자, 문 → 책상 앞 줄. 그 길은 비워 둔다)
+        //   책상 뒤 낮은 장(트로피·액자·분재), 책상 옆 스탠드, 문 옆 옷걸이, 앞 유리 쪽 어항, 소파 쪽 깔개·안락의자·스탠드, 넓으면 오른쪽 원탁 회의 자리
+        box(2.5, 0.66, 0.38, M.desk, dx, 0.33, rz0 + 0.28);
+        box(2.56, 0.04, 0.42, M.tableEdge, dx, 0.68, rz0 + 0.28);
+        for (var cdv = -1; cdv <= 1; cdv++) box(0.015, 0.5, 0.01, M.tableEdge, dx + cdv * 0.62, 0.33, rz0 + 0.475);
+        [-0.95, -0.6].forEach(function (o, i) {
+          mesh(G.cyl, M.dark, 0.14, 0.05, 0.14, dx + o, 0.725, rz0 + 0.28, root);
+          mesh(G.cyl, M.gold, 0.05, 0.14 + i * 0.05, 0.05, dx + o, 0.82 + i * 0.025, rz0 + 0.28, root);
+          mesh(G.sph, M.gold, 0.16, 0.13, 0.16, dx + o, 0.93 + i * 0.05, rz0 + 0.28, root);
+        });
+        [[-0.05, 0.3, 0.24], [0.32, 0.24, 0.3]].forEach(function (f) {
+          var fr = box(f[1], f[2], 0.03, M.dark, dx + f[0], 0.7 + f[2] / 2, rz0 + 0.24);
+          fr.rotation.x = -0.12;
+          var ph = box(f[1] - 0.06, f[2] - 0.06, 0.01, M.seats[f[0] < 0 ? 1 : 3], dx + f[0], 0.7 + f[2] / 2, rz0 + 0.26);
+          ph.rotation.x = -0.12;
+        });
+        mesh(G.cyl, M.pot, 0.2, 0.12, 0.2, dx + 0.9, 0.76, rz0 + 0.28, root);
+        mesh(G.ico, M.plantDark, 0.34, 0.24, 0.3, dx + 0.9, 0.93, rz0 + 0.28, root);
+        floorLamp(dx + 1.6, dz - 0.6);
+        mesh(G.cyl, M.metal, 0.3, 0.03, 0.3, xA + 0.4, 0.015, rz0 + 0.5, root);
+        mesh(G.cyl, M.metal, 0.04, 1.75, 0.04, xA + 0.4, 0.875, rz0 + 0.5, root);
+        box(0.36, 0.03, 0.03, M.metal, xA + 0.4, 1.72, rz0 + 0.5);
+        box(0.34, 0.62, 0.12, M.seats[5], xA + 0.4, 1.36, rz0 + 0.58);
+        mesh(G.cap, M.dark, 0.28, 0.2, 0.28, xA + 0.4, 1.77, rz0 + 0.5, root);
+        if (dx - 1.7 > xA + 2.9) {
+          box(1.6, 0.72, 0.46, M.desk, xA + 1.95, 0.36, rz1 - 0.42);
+          box(1.56, 0.5, 0.42, M.tank, xA + 1.95, 0.97, rz1 - 0.42);
+          box(1.6, 0.04, 0.46, M.dark, xA + 1.95, 1.24, rz1 - 0.42);
+          box(1.5, 0.06, 0.38, M.counter, xA + 1.95, 0.75, rz1 - 0.42);
+          [[-0.5, 0.95, 0], [-0.1, 1.05, 1], [0.35, 0.9, 0], [0.55, 1.08, 1]].forEach(function (f) {
+            box(0.11, 0.05, 0.03, f[2] ? M.gold : M.fish, xA + 1.95 + f[0], f[1], rz1 - 0.4 + f[2] * 0.08);
+          });
+          [-0.62, -0.3, 0.2, 0.6].forEach(function (o, i) { mesh(G.cyl, M.plantDark, 0.04, 0.22 + (i % 2) * 0.12, 0.04, xA + 1.95 + o, 0.86 + (i % 2) * 0.06, rz1 - 0.48, root); });
+        }
+        rug(xB - 1.55, rz1 - 1.7, 2.7, 2.6, M.carpet);
+        floorLamp(xB - 0.45, rz1 - 0.4);
+        if (xB - 3.2 > dx + 1.8) { var ac = grp(xB - 2.75, rz1 - 1.7, Math.PI / 2); armchairAt(ac); }
+        if (xB - 4.0 > dx + 1.8) {
+          var mtx = xB - 2.5, mtz = rz0 + 2.0;
+          roundTable(mtx, mtz, 1.15, 0.72);
+          [0, 1, 2, 3].forEach(function (k) {
+            var ang = k * Math.PI / 2 + Math.PI / 4;
+            seatChair(mtx + Math.sin(ang) * 0.78, mtz + Math.cos(ang) * 0.78, ang + Math.PI, M.chair);
+          });
+          box(0.04, 1.0, 1.3, M.white, xB - 0.13, 1.3, mtz);
+          box(0.05, 1.08, 1.38, M.frame, xB - 0.09, 1.3, mtz);
+          mesh(G.cyl, M.rug, 2.7, 0.008, 2.7, mtx, 0.016, mtz, root);
+        }
+        tree(xB - 0.5, rz1 - 2.9, 1.0);
+        // 뒷벽 진열장 (유리문 안에 트로피·상패)
+        if (dx + 3.0 < xB - 0.9) {
+          var vx = dx + 2.2;
+          box(1.4, 1.75, 0.03, M.desk, vx, 0.875, rz0 + 0.115);
+          box(0.05, 1.75, 0.4, M.desk, vx - 0.675, 0.875, rz0 + 0.3);
+          box(0.05, 1.75, 0.4, M.desk, vx + 0.675, 0.875, rz0 + 0.3);
+          box(1.4, 0.05, 0.4, M.desk, vx, 1.725, rz0 + 0.3);
+          box(1.4, 0.3, 0.4, M.desk, vx, 0.15, rz0 + 0.3);
+          box(1.3, 1.4, 0.02, M.tank, vx, 1.0, rz0 + 0.51);
+          [0.55, 1.05, 1.5].forEach(function (sy, i) {
+            box(1.3, 0.03, 0.34, M.counter, vx, sy, rz0 + 0.3);
+            [-0.4, 0, 0.4].forEach(function (o, k) {
+              if ((i + k) % 2) box(0.2, 0.26, 0.04, M.gold, vx + o, sy + 0.14, rz0 + 0.25);
+              else { mesh(G.cyl, M.gold, 0.08, 0.16, 0.08, vx + o, sy + 0.09, rz0 + 0.3, root); mesh(G.sph, M.gold, 0.15, 0.12, 0.15, vx + o, sy + 0.22, rz0 + 0.3, root); }
+            });
+          });
+        }
+        // 책장 앞 지구본
+        mesh(G.cyl, M.tableEdge, 0.3, 0.04, 0.3, xA + 0.95, 0.02, rz0 + 5.35, root);
+        mesh(G.cyl, M.tableEdge, 0.05, 0.7, 0.05, xA + 0.95, 0.37, rz0 + 5.35, root);
+        mesh(G.sph, M.water, 0.42, 0.42, 0.42, xA + 0.95, 0.92, rz0 + 5.35, root);
+        mesh(G.ico, M.plant, 0.2, 0.16, 0.16, xA + 1.0, 1.0, rz0 + 5.45, root);
+        mesh(G.ico, M.plant, 0.14, 0.12, 0.12, xA + 0.86, 0.85, rz0 + 5.5, root);
+        // 방이 넓으면(화면이 넓어 한 줄에 방이 많을 때) 빈 바닥에 손님 자리를 더 둔다: 문~대표 의자 길과 줄 서는 길 사이, 앞쪽 오른편
+        if (dx - 1.9 - (xA + 1.9) >= 2.8) nook((xA + 1.9 + dx - 1.9) / 2, rz0 + 2.3);
+        if (xB - 3.3 - (dx + 1.8) >= 2.8) nook((dx + 1.8 + xB - 3.3) / 2, rz0 + 5.6);
         W.desk = { x: dx, z: dz, room: ceoR };
         W.ceoSeat = { key: 'ceo-seat', place: ceoR.place(rz0 + 0.75), x: dx, ax: dx, z: chairZ, yaw: 0, pose: 'sit' };
 
         // 휴게실: 커피 바, 마주 보는 소파 둘, 자판기, 동그란 탁자
-        var loungeR = lowerRoom(xB, xC, '휴게실', M.lounge);
+        var loungeR = lowerRoom(xB, xC, '휴게실', M.lounge, '#4fae7c');
         var bz = rz0 + 0.45, bx0 = xC - 3.6;
         box(3.2, 0.95, 0.6, M.counter, bx0 + 1.6, 0.475, bz);
         box(3.26, 0.04, 0.66, M.tableEdge, bx0 + 1.6, 0.97, bz);
@@ -908,11 +1199,109 @@
         mesh(G.cyl, M.metal, 0.08, 0.72, 0.08, xC - 1.2, 0.36, rz1 - 1.3, root);
         plant(xC - 0.5, rz1 - 0.5, 1.2);
         plant(xB + 0.5, rz1 - 0.5, 1.0);
+        // 휴게실 꾸밈 (사람 길: 문 → rz0+1.3 줄 → 커피 바·소파. 그 줄과 소파로 가는 길은 비워 둔다)
+        //   커피 바 위 메뉴판, 뒷벽 오락기·책장·정수기, 왼쪽 탁구대, 오른쪽 둥근 탁자 의자·높은 탁자, 빈백, 소파 옆 스탠드
+        box(2.3, 0.64, 0.04, M.menu, bx0 + 1.6, 1.8, rz0 + 0.1);
+        for (var mr = 0; mr < 4; mr++) {
+          box(0.62, 0.035, 0.01, M.white, bx0 + 0.95, 1.98 - mr * 0.12, rz0 + 0.125);
+          box(0.62, 0.035, 0.01, M.white, bx0 + 2.25, 1.98 - mr * 0.12, rz0 + 0.125);
+        }
+        var lbx = xB + 2.4;
+        [0, 1].forEach(function (k) {
+          if (lbx + 0.4 > bx0 - 0.15) return;
+          var g = grp(lbx, rz0 + 0.42, 0);
+          box(0.68, 1.7, 0.6, M.seats[k ? 4 : 1], 0, 0.85, 0, g);
+          var bz2 = box(0.58, 0.5, 0.04, M.dark, 0, 1.3, 0.3, g);
+          bz2.rotation.x = -0.2;
+          var sc2 = box(0.46, 0.38, 0.01, M.screenOn, 0, 1.3, 0.325, g);
+          sc2.rotation.x = -0.2;
+          var cp = box(0.66, 0.06, 0.3, M.dark, 0, 0.98, 0.4, g);
+          cp.rotation.x = 0.3;
+          mesh(G.sph, M.fruit[1], 0.07, 0.07, 0.07, -0.12, 1.07, 0.42, g);
+          mesh(G.sph, M.fruit[0], 0.05, 0.05, 0.05, 0.1, 1.06, 0.44, g);
+          box(0.64, 0.16, 0.05, M.bulb, 0, 1.62, 0.29, g);
+          lbx += 0.8;
+        });
+        if (lbx + 2.2 < bx0 - 0.15) { shelf(lbx + 1.0, rz0 + 0.3, 2.0, false); lbx += 2.2; }
+        if (lbx + 0.4 < bx0 - 0.15) {
+          box(0.32, 0.95, 0.32, M.cooler, bx0 - 0.4, 0.475, rz0 + 0.3);
+          mesh(G.cyl, M.water, 0.24, 0.36, 0.24, bx0 - 0.4, 1.13, rz0 + 0.3, root);
+        }
+        tree(xB + 0.45, rz0 + 2.4, 0.9);
+        var ltx0 = xB + 0.4, ltx1 = scx - 2.35;
+        if (ltx1 - ltx0 >= 2.0) {
+          var ptx = (ltx0 + ltx1) / 2, ptz = rz0 + 4.35;
+          box(1.52, 0.05, 2.74, M.felt, ptx, 0.74, ptz);
+          box(0.02, 0.052, 2.74, M.white, ptx, 0.741, ptz);
+          box(1.52, 0.052, 0.03, M.white, ptx, 0.741, ptz - 1.355);
+          box(1.52, 0.052, 0.03, M.white, ptx, 0.741, ptz + 1.355);
+          box(1.7, 0.15, 0.02, M.white, ptx, 0.84, ptz);
+          [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) { box(0.06, 0.72, 0.06, M.dark, ptx + c[0] * 0.62, 0.36, ptz + c[1] * 1.1); });
+          mesh(G.cyl, M.fruit[1], 0.16, 0.02, 0.16, ptx - 0.3, 0.775, ptz - 0.7, root);
+          box(0.03, 0.02, 0.1, M.tableEdge, ptx - 0.3, 0.775, ptz - 0.57);
+          mesh(G.cyl, M.dark, 0.16, 0.02, 0.16, ptx + 0.35, 0.775, ptz + 0.8, root);
+          box(0.03, 0.02, 0.1, M.tableEdge, ptx + 0.35, 0.775, ptz + 0.93);
+          mesh(G.sph, M.white, 0.04, 0.04, 0.04, ptx + 0.1, 0.785, ptz + 0.3, root);
+        }
+        floorLamp(scx - 2.2, scz - 1.3);
+        floorLamp(scx + 2.2, scz - 1.3);
+        var rtx = xC - 1.2, rtz = rz1 - 1.3;
+        if (rtx - 0.95 > scx + 2.35) seatChair(rtx - 0.72, rtz, Math.PI / 2, M.seats[2]);
+        seatChair(rtx, rtz - 0.72, 0, M.seats[2]);
+        seatChair(rtx + 0.66, rtz, -Math.PI / 2, M.seats[2]);
+        if (xC - 0.3 - (scx + 2.35) >= 2.4) {
+          var htx = xC - 1.4, htz = rz0 + 3.3;
+          mesh(G.cyl, M.table, 0.7, 0.04, 0.7, htx, 1.02, htz, root);
+          mesh(G.cyl, M.metal, 0.06, 1.0, 0.06, htx, 0.5, htz, root);
+          mesh(G.cyl, M.metal, 0.42, 0.03, 0.42, htx, 0.015, htz, root);
+          stool(htx - 0.52, htz, M.seats[0]);
+          stool(htx + 0.52, htz, M.seats[0]);
+          stool(htx, htz + 0.52, M.seats[0]);
+        }
+        if (xC - 2.3 - (scx + 2.35) >= 2.1) {
+          mesh(G.sph, M.seats[3], 0.8, 0.5, 0.78, scx + 2.95, 0.25, rz1 - 0.85, root);
+          mesh(G.sph, M.seats[5], 0.78, 0.48, 0.8, scx + 3.8, 0.24, rz1 - 0.7, root);
+        }
+        if (ltx1 - ltx0 >= 2.0) {   // 탁구대 앞 빈백
+          mesh(G.sph, M.seats[0], 0.78, 0.48, 0.76, ptx - 0.5, 0.24, rz1 - 0.6, root);
+          mesh(G.sph, M.seats[2], 0.76, 0.46, 0.8, ptx + 0.45, 0.23, rz1 - 0.68, root);
+        }
+        if (ltx1 - ltx0 >= 5.0) {   // 넓으면 탁구대 옆 축구 게임대
+          var fbx = ptx + 2.0, fbz = rz0 + 4.35;
+          box(1.2, 0.22, 0.72, M.tableEdge, fbx, 0.8, fbz);
+          box(1.1, 0.02, 0.62, M.felt, fbx, 0.9, fbz);
+          [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (c) { box(0.07, 0.7, 0.07, M.dark, fbx + c[0] * 0.52, 0.35, fbz + c[1] * 0.28); });
+          for (var fr = 0; fr < 6; fr++) {
+            var rx = fbx - 0.45 + fr * 0.18;
+            var rod = mesh(G.cyl, M.metal, 0.025, 0.95, 0.025, rx, 0.97, fbz, root);
+            rod.rotation.x = Math.PI / 2;
+            for (var fm = -1; fm <= 1; fm += 2) box(0.04, 0.1, 0.05, M.seats[fr < 3 ? 1 : 0], rx, 0.95, fbz + fm * 0.14);
+          }
+        }
+        if (xC - 2.4 - (scx + 2.4) >= 2.8) {   // 넓으면 오른쪽에 TV 와 TV 보는 소파
+          var tvx = (scx + 2.4 + xC - 2.4) / 2, tvz = rz0 + 2.35;
+          rug(tvx, rz0 + 3.25, 2.8, 2.3, M.carpet);
+          box(1.8, 0.5, 0.42, M.tableEdge, tvx, 0.25, tvz);
+          box(1.5, 0.86, 0.06, M.dark, tvx, 1.0, tvz);
+          box(1.4, 0.76, 0.01, M.screenOn, tvx, 1.0, tvz + 0.035);
+          sofaAt(grp(tvx, rz0 + 4.1, Math.PI), 2.2);
+          plant(tvx + 1.25, tvz, 0.8);
+        }
+        rug((xB + 2.0 + bx0 - 0.2) / 2, rz0 + 1.3, bx0 - xB - 2.2, 0.9, M.carpet);   // 커피 바로 가는 길 깔개
+        // 오른쪽 벽 다트판
+        var dart = mesh(G.cyl, M.dark, 0.56, 0.04, 0.56, xC - 0.08, 1.55, rz0 + 2.3, root);
+        dart.rotation.z = Math.PI / 2;
+        var dr1 = mesh(G.cyl, M.fruit[1], 0.4, 0.045, 0.4, xC - 0.085, 1.55, rz0 + 2.3, root);
+        dr1.rotation.z = Math.PI / 2;
+        var dr2 = mesh(G.cyl, M.white, 0.22, 0.05, 0.22, xC - 0.09, 1.55, rz0 + 2.3, root);
+        dr2.rotation.z = Math.PI / 2;
+        var dr3 = mesh(G.cyl, M.fruit[1], 0.07, 0.055, 0.07, xC - 0.095, 1.55, rz0 + 2.3, root);
+        dr3.rotation.z = Math.PI / 2;
 
-        // 수면실: 침대 여럿과 머리맡 스탠드. 오래 쉬는 세션이 와서 잔다.
-        var napR = lowerRoom(xC, xD, '수면실', M.napFloor);
+        // 수면실: 침대 여럿(방이 넓으면 6개까지)과 머리맡 스탠드. 오래 쉬는 세션이 와서 잔다.
+        var napR = lowerRoom(xC, xD, '수면실', M.napFloor, '#7a86c8');
         W.lower = [ceoR, loungeR, napR];
-        var nBeds = Math.max(1, Math.min(4, Math.floor((xD - xC - 1.6) / 1.5))), bedZ = rz1 - 1.9;
+        var nBeds = Math.max(1, Math.min(2, Math.floor((xD - xC - 1.6) / 1.5)), Math.min(6, Math.floor((xD - xC - 3.0) / 1.5))), bedZ = rz1 - 1.9;
         for (var bi = 0; bi < nBeds; bi++) {
           var bxx = xC + 1.4 + bi * 1.5;
           box(1.0, 0.36, 2.05, M.tableEdge, bxx, 0.18, bedZ);
@@ -925,19 +1314,105 @@
             box(0.18, 0.18, 0.18, M.led, bxx + 0.75, 0.6, bedZ - 0.75);
           }
           breaks.push({ key: 'bed' + bi, place: napR.place(bedZ - 1.5), x: bxx, ax: bxx, z: bedZ, yaw: 0, pose: 'sleep', sleep: true });
+          box(0.1, 0.04, 0.24, M.seats[(bi + 2) % M.seats.length], bxx - 0.08, 0.04, rz1 - 0.5);
+          box(0.1, 0.04, 0.24, M.seats[(bi + 2) % M.seats.length], bxx + 0.08, 0.04, rz1 - 0.48);
         }
         plant(xD - 0.5, rz0 + 0.6, 1.0);
+        // 수면실 꾸밈 (사람 길: 문 → rz0+3.6 줄 → 침대. 그 줄 위쪽 뒷벽에만 놓는다)
+        //   뒷벽 안마의자, 왼쪽 벽 담요 선반, 침대 발치 깔개·슬리퍼, 오른쪽 빈자리에 소파·스탠드·나무
+        var bedsEnd = xC + 1.4 + (nBeds - 1) * 1.5 + 0.5;
+        rug((xC + 0.9 + bedsEnd) / 2, rz1 - 0.48, bedsEnd - xC - 0.6, 0.62, M.rug);
+        for (var mc = 0, mcx = xC + 2.6; mc < 3 && mcx + 0.45 < xD - 1.05; mc++, mcx += 1.05) {
+          var mg = grp(mcx, rz0 + 0.7, 0);
+          box(0.78, 0.36, 0.9, M.dark, 0, 0.18, 0, mg);
+          box(0.6, 0.14, 0.62, M.seats[(mc * 2 + 1) % M.seats.length], 0, 0.43, 0.04, mg);
+          var mb = box(0.66, 0.95, 0.22, M.dark, 0, 0.88, -0.36, mg);
+          mb.rotation.x = -0.32;
+          var mp = box(0.5, 0.7, 0.06, M.seats[(mc * 2 + 1) % M.seats.length], 0, 0.9, -0.24, mg);
+          mp.rotation.x = -0.32;
+          box(0.16, 0.36, 0.78, M.dark, -0.39, 0.54, 0.02, mg);
+          box(0.16, 0.36, 0.78, M.dark, 0.39, 0.54, 0.02, mg);
+          var ml = box(0.46, 0.12, 0.5, M.dark, 0, 0.26, 0.6, mg);
+          ml.rotation.x = 0.55;
+        }
+        var bg = grp(xC + 0.33, rz0 + 2.25, Math.PI / 2);   // 담요·베개 선반 (앞이 트여 +x 쪽을 본다)
+        box(1.4, 1.5, 0.03, M.tableEdge, 0, 0.75, -0.2, bg);
+        box(0.04, 1.5, 0.42, M.tableEdge, -0.68, 0.75, 0, bg);
+        box(0.04, 1.5, 0.42, M.tableEdge, 0.68, 0.75, 0, bg);
+        box(1.4, 0.04, 0.42, M.tableEdge, 0, 1.5, 0, bg);
+        for (var bl = 0; bl < 3; bl++) {
+          box(1.34, 0.03, 0.4, M.table, 0, 0.06 + bl * 0.48, 0, bg);
+          for (var bs = 0; bs < 3; bs++) {
+            for (var bh = 0; bh < 2; bh++) box(0.36, 0.09, 0.32, M.seats[(bl + bs + bh * 3) % M.seats.length], -0.44 + bs * 0.44, 0.12 + bl * 0.48 + bh * 0.1, 0, bg);
+          }
+        }
+        var napFree = xD - 0.15 - bedsEnd;
+        if (napFree >= 1.6) {
+          sofa(xD - 0.6, rz0 + 5.0, 2.0, -1);
+          rug(xD - 0.15 - Math.min(1.7, napFree - 0.2) / 2, rz0 + 5.0, Math.min(1.7, napFree - 0.2), 2.5, M.carpet);
+          floorLamp(xD - 0.45, rz0 + 3.6);
+        }
+        if (napFree >= 2.6) tree(bedsEnd + 0.55, rz1 - 0.55, 0.95);
+        if (xD - 1.2 - (bedsEnd + 0.5) >= 2.8) nook((bedsEnd + 0.5 + xD - 1.2) / 2, rz0 + 2.2);
+        // 침대 사이 낮은 천 칸막이, 가운데 큰 깔개, 왼쪽 앞 구석 달 모양 등
+        for (var pi2 = 0; pi2 < nBeds - 1; pi2++) box(0.04, 1.0, 1.45, M.curtain, xC + 1.4 + pi2 * 1.5 + 0.75, 0.5, bedZ + 0.28);
+        var nrx0 = xC + 1.0, nrx1 = Math.min(xD - 1.2, Math.max(bedsEnd, xC + 4.5));
+        rug((nrx0 + nrx1) / 2, rz0 + 2.45, nrx1 - nrx0, 1.5, M.lounge);
+        mesh(G.sph, M.bulb, 0.34, 0.34, 0.34, xC + 0.42, 0.19, rz1 - 0.42, root);
+        mesh(G.cyl, M.tableEdge, 0.3, 0.04, 0.3, xC + 0.42, 0.02, rz1 - 0.42, root);
 
-        // 바깥벽: 뒤·왼쪽은 창문 있는 높은 벽(카메라가 그 바깥쪽으로 돌면 감춘다), 오른쪽·앞은 낮은 턱
-        var backWall = new T.Group(), leftWall = new T.Group();
-        box(maxX + 0.24, 2.9, 0.12, M.wall, maxX / 2, 1.45, -0.12, backWall);
-        for (var wx = 1.4; wx < maxX - 0.9; wx += 2.4) box(1.7, 1.1, 0.02, M.sky, wx, 1.75, -0.055, backWall);
-        box(0.12, 2.9, lobby.z1 + 0.24, M.wall, -0.12, 1.45, lobby.z1 / 2, leftWall);
-        for (var wz = 1.4; wz < lobby.z1 - 0.9; wz += 2.4) if (Math.abs(wz - ez) > 1.4) box(0.02, 1.1, 1.7, M.sky, -0.055, 1.75, wz, leftWall);
-        box(0.12, 0.35, lobby.z1, M.wall, maxX + 0.06, 0.175, lobby.z1 / 2);
-        box(maxX, 0.35, 0.12, M.wall, maxX / 2, 0.175, lobby.z1 + 0.06);
-        W.cut.push({ obj: backWall, nx: 0, nz: -1 }, { obj: leftWall, nx: -1, nz: 0 });
-        scene.add(backWall, leftWall);
+        // 바깥벽: 사방 커튼월 (바닥부터 유리, 1.5m 마다 세로 멀리언, 위쪽 가로대, 맨 위는 층 슬래브 띠).
+        // 유리에는 바깥 하늘과 먼 빌딩이 비친다. 카메라가 어느 면 바깥쪽으로 돌면 그 면은 감추고 아래 턱만 남긴다.
+        // 왼쪽 면의 엘리베이터 자리는 막힌 벽.
+        var cwTex = skylineTexture(skyKind(s.hour)), cwMat = new T.MeshBasicMaterial({ map: cwTex });
+        trash.push(cwTex, cwMat);
+        var CW_O = 0.16, cwLenX = maxX + CW_O * 2, cwLenZ = lobby.z1 + CW_O * 2;
+        function curtainWall(x, z, rot, len, solid) {   // (x, z) 에서 시작해 len 만큼, 안쪽이 로컬 +z
+          var parts = new T.Group(), panes = new T.Group();
+          [parts, panes].forEach(function (o) { o.position.set(x, 0, z); o.rotation.y = rot; });
+          box(len, CW_H - CW_GLASS, 0.1, M.spandrel, len / 2, (CW_H + CW_GLASS) / 2, 0, parts);
+          box(len, 0.06, 0.18, M.mullion, len / 2, CW_H - 0.03, 0.02, parts);
+          box(len, 0.06, 0.14, M.mullion, len / 2, CW_GLASS, 0.04, parts);
+          box(len, 0.045, 0.1, M.mullion, len / 2, 2.05, 0.04, parts);
+          var n = Math.max(1, Math.round(len / CW_MOD)), step = len / n;
+          for (var i = 0; i <= n; i++) {
+            var mx = i * step;
+            if (solid && Math.abs(mx - solid[0]) < solid[1] / 2) continue;
+            box(0.07, CW_H, 0.14, M.mullion, mx, CW_H / 2, 0.04, parts);
+          }
+          var spans = [[0, len]];
+          if (solid) {
+            var sa = solid[0] - solid[1] / 2, sb = solid[0] + solid[1] / 2;
+            box(sb - sa, CW_H, 0.14, M.wall, solid[0], CW_H / 2, 0.03, parts);
+            spans = [[0, sa], [sb, len]];
+          }
+          spans.forEach(function (sp) {
+            var gw = sp[1] - sp[0], gh = CW_GLASS - 0.1;
+            if (gw <= 0.05) return;
+            var geo = new T.PlaneGeometry(gw, gh), uv = geo.attributes.uv;
+            for (var k = 0; k < uv.count; k++) uv.setX(k, (sp[0] + uv.getX(k) * gw) / CW_SPAN);
+            trash.push(geo);
+            var pm = new T.Mesh(geo, cwMat);
+            pm.position.set((sp[0] + sp[1]) / 2, 0.1 + gh / 2, -0.02);
+            panes.add(pm);
+          });
+          var side = mergeStatic(parts);
+          side.traverse(function (o) { if (o.isMesh) trash.push(o.geometry); });
+          side.add(panes);
+          return side;
+        }
+        var walls = [
+          { obj: curtainWall(-CW_O, -CW_O, 0, cwLenX), nx: 0, nz: -1 },
+          { obj: curtainWall(maxX + CW_O, lobby.z1 + CW_O, Math.PI, cwLenX), nx: 0, nz: 1 },
+          { obj: curtainWall(-CW_O, lobby.z1 + CW_O, Math.PI / 2, cwLenZ, [lobby.z1 + CW_O - ez, 2.2]), nx: -1, nz: 0 },
+          { obj: curtainWall(maxX + CW_O, -CW_O, -Math.PI / 2, cwLenZ), nx: 1, nz: 0 }
+        ];
+        walls.forEach(function (c) { W.cut.push(c); scene.add(c.obj); });
+        // 아래 턱 (벽을 감춰도 건물 가장자리가 보이게)
+        box(cwLenX + 0.12, 0.12, 0.3, M.mullion, maxX / 2, 0.06, -CW_O);
+        box(cwLenX + 0.12, 0.12, 0.3, M.mullion, maxX / 2, 0.06, lobby.z1 + CW_O);
+        box(0.3, 0.12, cwLenZ, M.mullion, -CW_O, 0.06, lobby.z1 / 2);
+        box(0.3, 0.12, cwLenZ, M.mullion, maxX + CW_O, 0.06, lobby.z1 / 2);
 
         W.merged = mergeStatic(root);
         W.merged.traverse(function (o) { if (o.isMesh) trash.push(o.geometry); });
@@ -978,13 +1453,17 @@
         R.lamp.material.color.set(r.status.color || '#8f969d');
         R.blink = !!r.status.blink;
         drawBoard(R, r);
+        drawPlate(R.plate, r.no ? String(r.no) : '', r.label, r.status.color, !!r.alert);
+        // 글자 이름표(명패가 너무 작거나 뒷면이 보일 때 그 자리에 뜬다)도 명패와 같은 모양: [번호] 이름, 왼쪽 띠는 상태 색
         var label = r.status.label + (r.overflow ? ' +' + r.overflow : '');
         var lk = [r.no, r.label, label, r.status.color, r.alert].join('|');
         if (R.labelKey !== lk) {
           R.labelKey = lk;
-          R.label.innerHTML = (r.no ? '<em>' + esc(r.no) + '</em>' : '') + esc(r.label) + '<i style="background:' + esc(r.status.color) + '"></i><span>' + esc(label) + '</span>';
+          R.label.innerHTML = (r.no ? '<em>' + esc(r.no) + '</em>' : '') + esc(r.label);
+          R.label.style.setProperty('--rc', r.status.color || '#8f969d');
           R.label.classList.toggle('alert', !!r.alert);
-          R.label.setAttribute('aria-label', r.label + ' 회의실 들어가기');
+          R.label.title = r.label + ' · ' + label;
+          R.label.setAttribute('aria-label', r.label + ' 회의실 들어가기 (' + label + ')');
         }
       }
 
@@ -1462,10 +1941,14 @@
         var st = p.state, key = p.name + '|' + st;
         if (a.tagKey !== key) {
           a.tagKey = key;
-          var ico = { approval: '!', question: '?', error: '!', done: '✓', ceo: '★' }[st] || '';
-          a.alertIco = st === 'approval' || st === 'question' || st === 'error' || st === 'ceo';   // 멀리서도 아이콘만은 보이게
+          // 상태 색은 이름표 왼쪽 띠로. 기호는 알림(승인·답변·막힘)과 대표만
+          var ico = { approval: '!', question: '?', error: '!', ceo: '★' }[st] || '';
+          a.alertIco = !!ico;   // 멀리서도 아이콘만은 보이게
           a.tag.style.setProperty('--sc', st === 'ceo' ? '#d4a017' : (snap.colors && snap.colors[st]) || '#8f969d');
-          a.tag.innerHTML = (ico ? '<b class="ico">' + ico + '</b>' : '<i></i>') + '<span>' + esc(p.name) + '</span>';
+          a.tagIco = ico ? '<b class="ico">' + ico + '</b>' : '';
+          a.tagName = p.name;
+          a.tagFit = '';
+          a.tag.innerHTML = a.tagIco + '<span>' + esc(p.name) + '</span>';
           a.tag.title = (p.title || p.name) + ' · ' + ((snap.labels && snap.labels[st]) || st);
         }
         var b = p.bubble, bk = b && !p.worker ? b.kind + '|' + b.text : '';
@@ -1796,15 +2279,64 @@
         el.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px) translate(' + ax + ',' + ay + ')';
       }
       function vis(el, on) { if (el.hidden === on) el.hidden = !on; }
+      // 이름표 글씨를 폭 w(px) 에 두 줄까지 단어 단위로 나눈다. 한 단어가 한 줄보다 길거나 두 줄을 넘치면 말줄임.
+      var tagCtx = null;
+      function tagW(t) {
+        if (!tagCtx) {
+          tagCtx = document.createElement('canvas').getContext('2d');
+          tagCtx.font = '700 ' + TAG_FONT + 'px ' + (getComputedStyle(layer).fontFamily || FONT);
+        }
+        return tagCtx.measureText(t).width;
+      }
+      function cutTo(t, w) {
+        if (tagW(t) <= w) return t;
+        while (t.length > 1 && tagW(t + '…') > w) t = t.slice(0, -1);
+        return t + '…';
+      }
+      function fitName(name, w) {
+        var words = String(name || '').split(/\s+/).filter(Boolean), lines = [];
+        while (words.length && lines.length < 2) {
+          var line = '';
+          while (words.length && tagW(line ? line + ' ' + words[0] : words[0]) <= w) line = line ? line + ' ' + words.shift() : words.shift();
+          if (!line) line = cutTo(words.shift(), w);
+          lines.push(line);
+        }
+        if (words.length) lines[lines.length - 1] = cutTo(lines[lines.length - 1] + ' ' + words.join(' '), w);
+        return lines;
+      }
       function hit(p, q) { return p.x < q.x + q.w + 3 && q.x < p.x + p.w + 3 && p.y < q.y + q.h + 3 && q.y < p.y + p.h + 3; }
+
+      // 유리 명패 크기: 화면에서 PLATE_MIN_PX 보다 낮게 보이면 유리 폭 안에서 키운다.
+      // 그래도 글씨가 작거나 명패 뒷면·옆면이 보이면 small 로 두고 명패 대신 그 자리에 같은 모양의 글자 이름표를 띄운다.
+      // off: 그 방에 들어가 볼 때 (앞 유리와 함께 치운다)
+      function fitPlates() {
+        W.plates.forEach(function (pl) {
+          pl.small = false;
+          pl.mesh.visible = !pl.off;
+          if (pl.off) return;
+          HV.set(pl.x, PLATE_Y - PLATE_H / 2, pl.z);
+          var a = screenOf(HV);
+          HV.y += PLATE_H;
+          var b = screenOf(HV);
+          var d = camera.position.distanceTo(HV), face = d > 0 ? (camera.position.z - pl.z) / d : 0;
+          var px = a && b ? a.y - b.y : 0;
+          var s = px > 0.5 ? clamp(PLATE_MIN_PX / px, 1, pl.maxS) : 1;
+          pl.mesh.scale.set(pl.w * s, PLATE_H * s, 1);
+          pl.mesh.position.y = Math.max(PLATE_Y, 0.25 + PLATE_H * s / 2);
+          pl.small = face < 0.3 || px * s < PLATE_MIN_PX * 0.9;
+          pl.mesh.visible = !pl.small;
+        });
+      }
 
       function layoutOverlays() {
         var focal = ch / (2 * Math.tan(camera.fov * Math.PI / 360));
         var placed = [];   // 화면에 놓인 층 이름표·말풍선 (말풍선이 비켜 간다)
         W.labels.forEach(function (lb) {
-          HV.set(lb.x, lb.y, lb.z);
+          if (lb.plate) HV.set(lb.plate.x, lb.plate.mesh.position.y, lb.plate.z);
+          else HV.set(lb.x, lb.y, lb.z);
           var ppm = focal / camera.position.distanceTo(HV), sp = screenOf(HV);
           var on = !!sp && sp.x > -240 && sp.x < cw + 240 && sp.y > -40 && sp.y < ch + 40 && (!lb.minPpm || ppm >= lb.minPpm) && lb.room !== focus;
+          if (lb.plate && !lb.plate.small) on = false;
           if (lb.zone) on = !!sp && !focus;
           vis(lb.el, on);
           if (!on) return;
@@ -1837,19 +2369,33 @@
         var items = [];
         list.forEach(function (a) {
           a.parts.head.getWorldPosition(HV);
+          var headY = HV.y;
           HV.y += a.parts.top;
           var ppm = focal / camera.position.distanceTo(HV), sp = screenOf(HV);
           a.scr = sp ? { x: sp.x, y: sp.y, ppm: ppm } : null;
           var on = !!sp && a.alpha > 0.3 && sp.x > -120 && sp.x < cw + 120 && sp.y > -120 && sp.y < ch + 240;
           var inFocus = !!focus && a.room === focus;
-          var full = on && (inFocus || ppm > 34), icon = on && !full && a.alertIco;
+          // 이름표는 머리 오른쪽 옆에 네모로. 책상에 앉은 사람은 모두 같은 높이(TAG_DESK_Y)라 한 줄로 가지런하고,
+          // 폭은 옆자리 사람 머리에 닿지 않을 만큼만 (넘치면 두 줄, 그래도 넘치면 말줄임). 그 폭이 안 나오면 멀리서처럼 감춘다.
+          var still = !a.moving && a.alpha > 0.9, desk = still && a.spotKey.indexOf('seat:') === 0;
+          var gap = desk ? SEAT : still && /^q\d/.test(a.spotKey) ? 0.8 : 1.6;
+          var mw = Math.min(150, Math.floor(((gap - 0.22) * ppm - 2) / 2) * 2);
+          var full = on && (inFocus || ppm > 34) && mw >= 36, icon = on && !full && a.alertIco;
           vis(a.tag, full || icon);
           var top = sp ? sp.y - 4 : 0;
-          if (full || icon) {
-            var mode = icon ? 'icon' : 'full';
-            if (a.tagMode !== mode) { a.tag.classList.toggle('icon-only', icon); a.tagMode = mode; }
+          if (a.tagMode !== (icon ? 'icon' : 'full')) { a.tag.classList.toggle('icon-only', icon); a.tagMode = icon ? 'icon' : 'full'; }
+          if (icon) {
             put(a.tag, sp.x, sp.y, '-50%', '-100%');
-            top = sp.y - (icon ? 24 : 22);
+            top = sp.y - 24;
+          } else if (full) {
+            var fk = mw + '|' + a.tagKey;
+            if (a.tagFit !== fk) {
+              a.tagFit = fk;
+              a.tag.innerHTML = a.tagIco + '<span>' + fitName(a.tagName, mw - TAG_PAD - (a.tagIco ? 15 : 0)).map(esc).join('<br>') + '</span>';
+            }
+            HV.y = desk && SITTING[a.pose] ? TAG_DESK_Y : headY - 0.1;
+            var tp = screenOf(HV) || sp;
+            put(a.tag, sp.x + 0.11 * ppm + 1, tp.y, '0', '-50%');
           }
           var b = a.p.bubble, want = on && !a.worker && !!a.bubKey && b && b.kind !== 'mini' && a.alpha > 0.6;
           if (want && focus) want = inFocus || b.kind === 'alert';
@@ -1922,9 +2468,11 @@
           var R = W.rooms[n];
           R.lamp.visible = !R.blink || Math.floor(sec * 2.4) % 2 === 0;
           R.front.visible = focus !== n;
+          R.plate.off = focus === n;
         });
         var dirX = Math.sin(view.az), dirZ = Math.cos(view.az);
         W.cut.forEach(function (c) { c.obj.visible = dirX * c.nx + dirZ * c.nz <= 0.25; });
+        fitPlates();
         renderer.render(scene, camera);
         layoutOverlays();
       }

@@ -445,25 +445,24 @@
   .o3-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); }
   .o3-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
   .o3-layer > * { position: absolute; left: 0; top: 0; will-change: transform; }
-  .o3-room { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 3px 9px; border-radius: 8px; background: rgba(255, 255, 255, .93); color: #1f2328; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
-  .o3-room em { font-style: normal; opacity: .5; }
-  .o3-room i { width: 8px; height: 8px; border-radius: 50%; }
-  .o3-room span { font-weight: 600; color: #5b6470; }
-  .o3-room.alert { box-shadow: 0 0 0 2px var(--approval), 0 2px 8px rgba(0, 0, 0, .18); animation: o3pulse 1.3s ease-in-out infinite; }
+  /* 방 글자 이름표: 유리 명패가 너무 작게 보이거나 뒷면이 보일 때 그 자리에 뜬다. 명패와 같은 모양 (왼쪽 띠 = 방 상태 색) */
+  .o3-room { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: baseline; gap: 5px; border: 0; border-left: 4px solid var(--rc, #8f969d); padding: 2px 8px 3px 6px; border-radius: 4px; background: rgba(255, 255, 255, .95); color: #1f2328; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .2); }
+  .o3-room em { font-style: normal; color: #8a929c; }
+  .o3-room.alert { box-shadow: 0 0 0 2px var(--approval), 0 1px 4px rgba(0, 0, 0, .2); animation: o3pulse 1.3s ease-in-out infinite; }
   .o3-room.dim { opacity: .5; }
-  .o3-room.static { pointer-events: none; cursor: default; background: rgba(255, 255, 255, .82); color: #3a4350; }
-  .o3-room.compact { padding: 2px 7px; font-size: 11px; }
-  .o3-room.compact span { display: none; }
+  .o3-room.static { pointer-events: none; cursor: default; }
+  .o3-room.compact { padding: 1px 6px 2px 5px; font-size: 11px; }
   .o3-zone { z-index: 30; font-size: 15px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--zc, var(--line)); padding: 5px 12px 5px 10px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
   .o3-zone b { font-weight: 800; }
   .o3-zone span { margin-left: 8px; color: var(--muted); font-size: 12px; }
   .o3-spot { font-size: 11px; font-weight: 700; color: #fff; background: rgba(20, 24, 30, .6); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
-  .o3-tag { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 2px 5px; border-radius: 999px; background: rgba(255, 255, 255, .94); color: #1f2328; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .22); z-index: 5; }
-  .o3-tag i { width: 7px; height: 7px; border-radius: 50%; background: var(--sc); }
-  .o3-tag .ico { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--sc); color: #fff; font-size: 11px; font-weight: 900; line-height: 1; }
-  .o3-tag.icon-only { padding: 0; background: none; box-shadow: none; }
-  .o3-tag.icon-only i, .o3-tag.icon-only span { display: none; }
-  .o3-tag.icon-only .ico { width: 20px; height: 20px; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); animation: o3bob 1.1s ease-in-out infinite; }
+  /* 사람 이름표: 머리 오른쪽 옆 네모. 줄 나눔·말줄임은 office3d.js 가 폭에 맞춰 미리 한다 (TAG_FONT·TAG_PAD 와 맞출 것) */
+  .o3-tag { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 3px; padding: 2px 3px; border-left: 3px solid var(--sc); border-radius: 3px; background: rgba(255, 255, 255, .95); color: #1f2328; font-size: 9px; line-height: 1.2; font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .22); z-index: 5; }
+  .o3-tag span { white-space: nowrap; }
+  .o3-tag .ico { flex: none; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 2px; background: var(--sc); color: #fff; font-size: 9px; font-weight: 900; line-height: 1; }
+  .o3-tag.icon-only { padding: 0; border-left: 0; background: none; box-shadow: none; }
+  .o3-tag.icon-only span { display: none; }
+  .o3-tag.icon-only .ico { width: 20px; height: 20px; border-radius: 50%; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); animation: o3bob 1.1s ease-in-out infinite; }
   .o3-bub { pointer-events: auto; cursor: pointer; background: #fffefb; color: #1f2328; border-left: 3px solid var(--c, #8f969d); border-radius: 8px; padding: .25em .5em .3em; min-width: 60px; max-width: var(--mw, 180px); font-size: 11.5px; line-height: 1.35; box-shadow: 0 3px 10px rgba(0, 0, 0, .22); }
   .o3-bub::after { content: ""; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-bottom: 0; border-top-color: #fffefb; }
   .o3-bub.below::after { bottom: auto; top: -6px; border: 6px solid transparent; border-top: 0; border-bottom-color: #fffefb; }
