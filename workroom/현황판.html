@@ -454,7 +454,7 @@
   .o3-room.static { pointer-events: none; cursor: default; background: rgba(255, 255, 255, .82); color: #3a4350; }
   .o3-room.compact { padding: 2px 7px; font-size: 11px; }
   .o3-room.compact span { display: none; }
-  .o3-zone { font-size: 15px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); padding: 4px 12px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
+  .o3-zone { z-index: 30; font-size: 15px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-left: 6px solid var(--zc, var(--line)); padding: 5px 12px 5px 10px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
   .o3-zone b { font-weight: 800; }
   .o3-zone span { margin-left: 8px; color: var(--muted); font-size: 12px; }
   .o3-spot { font-size: 11px; font-weight: 700; color: #fff; background: rgba(20, 24, 30, .6); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
@@ -1206,6 +1206,9 @@
   // 회의실 안 화면 상태
   var zoomRoom = null, logData = null, minFilter = 'talk', expanded = {}, lastRoomScene = '', lastBubbleKey = '', lastMinKey = '', hashChecked = false;
 
+  // 이 컴퓨터 이름 (동기화를 켠 컴퓨터만 sync.json 에 있다)
+  function selfName() { return (data && data.sync && data.sync.machine) || ''; }
+
   function roomsView() {
     return (data && data.rooms || []).map(function (r) {
       var label = r.label || r.name;
@@ -1231,7 +1234,7 @@
     var spine = k >= 2 && (office.clientWidth || window.innerWidth) >= 640;
     var sessions = data.sessions || [];
     var hour = new Date(now).getHours();
-    var key = JSON.stringify([k, hour, data.rooms, data.meetings || [], (data.machines || []).map(function (m) { return [m.name, Math.floor((now - m.generatedAt) / 60000)]; }), sessions.map(function (s) {
+    var key = JSON.stringify([k, hour, data.rooms, data.meetings || [], selfName(), (data.machines || []).map(function (m) { return [m.name, Math.floor((now - m.generatedAt) / 60000)]; }), sessions.map(function (s) {
       return [s.id, s.room, s.state, s.title, s.lastPrompt && !s.title ? s.lastPrompt : '', s.quiet, s.startedAt, (s.subagents || []).map(function (a) { return a.type; })];
     })]);
     var meetingFor = {};
@@ -1239,7 +1242,7 @@
     if (key === lastScene) { tickClocks(now); return; }
     lastScene = key;
 
-    // 이 컴퓨터의 방 다음에, 다른 컴퓨터마다 "층 안내판" 한 줄과 그 컴퓨터의 방들을 붙인다.
+    // 이 컴퓨터의 방 다음에, 다른 컴퓨터마다 "층 안내판" 한 줄과 그 컴퓨터의 방들을 붙인다. 다른 컴퓨터가 있으면 이 컴퓨터 방 앞에도 안내판을 둔다.
     var rooms = roomsView();
     var groups = [];
     rooms.forEach(function (r) {
@@ -1247,10 +1250,11 @@
       if (!g || g.machine !== r.machine) { g = { machine: r.machine, rooms: [] }; groups.push(g); }
       g.rooms.push(r);
     });
-    var rows = [];   // { rooms: [...], gridRow } 또는 { sign: 컴퓨터, gridRow }
+    var multi = groups.some(function (g) { return g.machine; });
+    var rows = [];   // { rooms: [...], gridRow } 또는 { sign: 컴퓨터, self, gridRow }
     var gridRow = 1;
     groups.forEach(function (g) {
-      if (g.machine) { rows.push({ sign: g.machine, gridRow: gridRow }); gridRow += 1; }
+      if (multi) { rows.push({ sign: g.machine || selfName() || '이 컴퓨터', self: !g.machine, gridRow: gridRow }); gridRow += 1; }
       for (var i = 0; i < g.rooms.length; i += k) { rows.push({ rooms: g.rooms.slice(i, i + k), gridRow: gridRow }); gridRow += 2; }
     });
     var cols = (spine ? '64px ' : '') + 'repeat(' + k + ', minmax(0, 1fr))';
@@ -1267,7 +1271,7 @@
     rows.forEach(function (rowInfo) {
       if (rowInfo.sign) {
         var m = (data.machines || []).filter(function (x) { return x.name === rowInfo.sign; })[0];
-        var ageText = m ? (ago(m.generatedAt, now) || '0초') + ' 전 동기화' : '';
+        var ageText = rowInfo.self ? '이 컴퓨터' : m ? (ago(m.generatedAt, now) || '0초') + ' 전 동기화' : '';
         html += '<div class="floor-sign" style="grid-row:' + rowInfo.gridRow + ';grid-column:' + c0 + ' / span ' + k + '"><b>' + esc(rowInfo.sign) + '</b> 층<span>' + esc(ageText) + '</span></div>';
         return;
       }
@@ -1853,7 +1857,7 @@
     var colors = {}, labels = {};
     Object.keys(STATE).forEach(function (k) { colors[k] = cssColor(STATE[k].color); labels[k] = STATE[k].label; });
     return {
-      now: now, hour: new Date(now).getHours(), dark: darkTheme(), focus: zoomRoom, rooms: rooms, colors: colors, labels: labels,
+      now: now, hour: new Date(now).getHours(), dark: darkTheme(), focus: zoomRoom, rooms: rooms, colors: colors, labels: labels, self: selfName(),
       machines: (data.machines || []).map(function (m) { return { name: m.name, ago: ago(m.generatedAt, now) || '0초' }; })
     };
   }

@@ -34,7 +34,8 @@
     var ROOM_D = 6.2;                // 방 깊이 (뒷벽 → 유리 앞벽)
     var CORR = 2.6;                  // 방 앞 복도 폭
     var SPINE = 2.8;                 // 왼쪽 세로 복도 폭
-    var ZONE_D = 2.2;                // 다른 컴퓨터 층 안내 띠
+    var ZONE_D = 3.4;                // 컴퓨터마다 층 안내 띠 (바닥에 층 이름을 크게 쓴다)
+    var ZONE_COLORS = ['#3b7ddd', '#e0703c', '#2e9d6c', '#9a5bd5', '#d39b12', '#d6457a'];   // 층마다 띠·바닥 글씨·이름표 색
     var LANE_D = 1.6;                // 맨 앞 로비 길 (엘리베이터, 아래쪽 방 문 앞)
     var LOBBY_D = 8.6;               // 맨 앞 로비 전체 (길 + 대표실·휴게실·수면실)
     var PANTRY_W = 4.2;              // 줄마다 오른쪽 끝 탕비실 폭
@@ -61,25 +62,25 @@
     // 사무실 색 테마 (조명 단추로 고른다. 페이지가 어두운 테마여도 사무실은 따로 고른 색으로 그린다)
     var THEMES = {
       pastel: {
-        name: '파스텔', bg: '#cfd9e4', floor: '#eeece7', floorLine: '#e0dcd4', carpet: '#d3dde8', lounge: '#eadcc6', lobby: '#e3cba6', lobbyLine: '#cfb38a', zone: '#d6e4f6',
+        name: '파스텔', bg: '#cfd9e4', floor: '#eeece7', floorLine: '#e0dcd4', carpet: '#d3dde8', lounge: '#eadcc6', lobby: '#e3cba6', lobbyLine: '#cfb38a',
         wall: '#fbfaf6', cap: '#a7b1bc', glass: '#d6ecfa', table: '#d4a878', tableEdge: '#ad7f55', chair: '#5b6370', metal: '#c2cad3',
         sofa: '#8db2d3', sofaSeat: '#a7c6e0', laptop: '#dadfe5', frame: '#bcc5ce', pot: '#e08b5b', counter: '#f5f1ea', rug: '#efdfc2', desk: '#c0915f', mat: '#9fabb8',
         seats: ['#f2a7a0', '#9cc7e8', '#f5d48a', '#a8d8b9', '#c9b5e8', '#f7b98b']
       },
       wood: {
-        name: '우드', bg: '#d6cdc2', floor: '#e6dccd', floorLine: '#d6c8b4', carpet: '#cbb89a', lounge: '#dcc6a2', lobby: '#c49a6b', lobbyLine: '#a98256', zone: '#e2d3bb',
+        name: '우드', bg: '#d6cdc2', floor: '#e6dccd', floorLine: '#d6c8b4', carpet: '#cbb89a', lounge: '#dcc6a2', lobby: '#c49a6b', lobbyLine: '#a98256',
         wall: '#f3ece1', cap: '#8a7560', glass: '#e8dcc6', table: '#9c6b43', tableEdge: '#7a5233', chair: '#4a3c30', metal: '#a89a8a',
         sofa: '#7a8f6a', sofaSeat: '#93a883', laptop: '#cfc8bf', frame: '#8a7560', pot: '#b86b45', counter: '#ede3d3', rug: '#d4bd96', desk: '#8a5e3c', mat: '#8a7560',
         seats: ['#c98b6b', '#8fae8b', '#d9b26a', '#9a8fb5', '#c47f7f', '#7fa3b5']
       },
       modern: {
-        name: '모던', bg: '#c3c9d1', floor: '#e2e4e7', floorLine: '#d0d4d9', carpet: '#98a1ac', lounge: '#b7b0a6', lobby: '#bcc1c7', lobbyLine: '#aab0b7', zone: '#ccd6e2',
+        name: '모던', bg: '#c3c9d1', floor: '#e2e4e7', floorLine: '#d0d4d9', carpet: '#98a1ac', lounge: '#b7b0a6', lobby: '#bcc1c7', lobbyLine: '#aab0b7',
         wall: '#f1f2f4', cap: '#4a525c', glass: '#cbd9e5', table: '#ecebe8', tableEdge: '#9aa0a8', chair: '#2f343b', metal: '#8f969e',
         sofa: '#4f5862', sofaSeat: '#66707b', laptop: '#c7ccd2', frame: '#4a525c', pot: '#d6d6d6', counter: '#f4f5f6', rug: '#c0c4ca', desk: '#3a3f46', mat: '#4a525c',
         seats: ['#3a7bd5', '#e05a4f', '#2fa37a', '#f2b134', '#8b5cf6', '#5b6573']
       },
       night: {
-        name: '밤', bg: '#1b222d', floor: '#3a3f48', floorLine: '#454b55', carpet: '#3b485a', lounge: '#4b4035', lobby: '#4a3d30', lobbyLine: '#57493b', zone: '#283850',
+        name: '밤', bg: '#1b222d', floor: '#3a3f48', floorLine: '#454b55', carpet: '#3b485a', lounge: '#4b4035', lobby: '#4a3d30', lobbyLine: '#57493b',
         wall: '#59616e', cap: '#2a2f36', glass: '#6c8aa8', table: '#7a5a3c', tableEdge: '#5a422c', chair: '#22262c', metal: '#5d6670',
         sofa: '#3e5468', sofaSeat: '#4a6379', laptop: '#8d959e', frame: '#5b6570', pot: '#9a5f3b', counter: '#4a4f57', rug: '#4a4034', desk: '#5b4733', mat: '#3a434d',
         seats: ['#9a5a54', '#4f6f8f', '#9a8040', '#4f7f62', '#6f5f94', '#9a6a48']
@@ -504,11 +505,28 @@
         var P = PAL, trash = [];
         function lam(c) { var m = new T.MeshLambertMaterial({ color: c }); trash.push(m); return m; }
         function basic(c) { var m = new T.MeshBasicMaterial({ color: c }); trash.push(m); return m; }
+        // 바닥에 칠하는 큰 글씨 (층 이름). 바탕은 투명하게 두고 글씨만 칠한다.
+        function floorText(text, color) {
+          var font = '800 150px ' + FONT, c = document.createElement('canvas'), x = c.getContext('2d');
+          x.font = font;
+          c.width = Math.ceil(x.measureText(text).width) + 40;
+          c.height = 200;
+          x.font = font;
+          x.fillStyle = color;
+          x.textBaseline = 'middle';
+          x.fillText(text, 20, 104);
+          var t = new T.CanvasTexture(c);
+          t.anisotropy = aniso;
+          t.encoding = T.sRGBEncoding;
+          var m = new T.MeshLambertMaterial({ map: t, transparent: true, depthWrite: false });
+          trash.push(m, t);
+          return { mat: m, aspect: c.width / c.height };
+        }
         var M = {
           wall: lam(P.wall), cap: lam(P.cap), table: lam(P.table), tableEdge: lam(P.tableEdge), chair: lam(P.chair),
           sofa: lam(P.sofa), sofaSeat: lam(P.sofaSeat), laptop: lam(P.laptop), screenOff: basic(P.screenOff), screenOn: basic(P.screenOn),
           frame: lam(P.frame), plant: lam(P.plant), plantDark: lam(P.plantDark), pot: lam(P.pot), metal: lam(P.metal), counter: lam(P.counter),
-          rug: lam(P.rug), desk: lam(P.desk), mat: lam(P.mat), carpet: lam(P.carpet), lounge: lam(P.lounge), zone: lam(P.zone),
+          rug: lam(P.rug), desk: lam(P.desk), mat: lam(P.mat), carpet: lam(P.carpet), lounge: lam(P.lounge),
           sky: basic(SKY[skyKind(s.hour)]), dark: lam('#3a414a'), white: lam('#ffffff'), cooler: lam('#e8f0f6'), water: lam('#8fd0f2'), led: basic('#ff8a4c'),
           seats: P.seats.map(function (c) { return lam(c); }),
           ceoFloor: lam(shade(P.lobby, 0.92)), napFloor: lam(shade(P.carpet, 0.62)), vending: lam(P.seats[0]), fridge: lam('#e9eef2'),
@@ -576,17 +594,21 @@
           return { grp: grp, scr: scr };
         }
 
-        // 방 배치: 컴퓨터마다 묶고, 한 줄에 cols 개씩. 다른 컴퓨터 앞에는 층 안내 띠를 둔다.
+        // 방 배치: 컴퓨터마다 묶고, 한 줄에 cols 개씩. 다른 컴퓨터가 있으면 컴퓨터마다(이 컴퓨터도) 앞에 층 안내 띠를 둔다.
         var groups = [];
         s.rooms.forEach(function (r) {
           var last = groups[groups.length - 1];
           if (!last || last.machine !== r.machine) { last = { machine: r.machine, rooms: [] }; groups.push(last); }
           last.rooms.push(r);
         });
+        var multi = groups.some(function (gr) { return gr.machine; });
         var cols = colsFor(s.rooms.length);
         var z = 0, maxX = SPINE + cols * roomWidth(4), rooms = {}, rows = [], zones = [], breaks = [], labels = [];
         groups.forEach(function (gr) {
-          if (gr.machine) { zones.push({ name: gr.machine, z0: z, z1: z + ZONE_D }); z += ZONE_D; }
+          if (multi) {
+            zones.push({ name: gr.machine || s.self || '이 컴퓨터', self: !gr.machine, color: ZONE_COLORS[zones.length % ZONE_COLORS.length], z0: z, z1: z + ZONE_D });
+            z += ZONE_D;
+          }
           for (var i = 0; i < gr.rooms.length; i += cols) {
             var row = { i: rows.length, z0: z, zc: z + ROOM_D + CORR / 2, x1: SPINE, rooms: [] };
             gr.rooms.slice(i, i + cols).forEach(function (r) {
@@ -627,12 +649,25 @@
         var lf = mesh(G.plane, lm, maxX, LOBBY_D, 1, maxX / 2, 0, zL + LOBBY_D / 2, keep);
         lf.rotation.x = -Math.PI / 2;
         lf.receiveShadow = true;
+        // 층 안내 띠: 층 색으로 물든 바닥, 양쪽 색 줄, 바닥에 크게 쓴 층 이름 (이름표가 가려져도 층이 보이게)
         zones.forEach(function (zn) {
-          box(maxX - SPINE, 0.012, ZONE_D - 0.3, M.zone, SPINE + (maxX - SPINE) / 2, 0.006, (zn.z0 + zn.z1) / 2);
+          var zc = (zn.z0 + zn.z1) / 2, edge = lam(zn.color);
+          box(maxX, 0.012, ZONE_D - 0.3, lam(new T.Color(P.floor).lerp(new T.Color(zn.color), 0.18)), maxX / 2, 0.006, zc);
+          box(maxX, 0.016, 0.12, edge, maxX / 2, 0.008, zn.z0 + 0.2);
+          box(maxX, 0.016, 0.12, edge, maxX / 2, 0.008, zn.z1 - 0.2);
+          // 글씨는 띠 뒤쪽에 쓴다 (앞쪽은 카메라에서 보면 바로 앞 방 뒷벽에 가린다)
+          var paint = floorText(zn.name + ' 층', zn.color), span = maxX - SPINE - 1;
+          var th = Math.min(ZONE_D - 1.4, span / paint.aspect), tw = th * paint.aspect;
+          for (var tx = SPINE + 0.6; tx === SPINE + 0.6 || tx + tw <= maxX - 0.4; tx += tw + 9) {
+            var tm = mesh(G.plane, paint.mat, tw, th, 1, tx + tw / 2, 0.02, zn.z0 + 0.35 + th / 2, keep);
+            tm.rotation.x = -Math.PI / 2;
+            tm.receiveShadow = true;
+          }
           var el = document.createElement('div');
           el.className = 'o3-zone';
+          el.style.setProperty('--zc', zn.color);
           layer.appendChild(el);
-          labels.push({ el: el, x: SPINE + 0.6, y: 0.05, z: (zn.z0 + zn.z1) / 2, ax: '0', ay: '-50%', zone: zn.name });
+          labels.push({ el: el, x: 0, y: 0.05, z: zc, zone: zn.name, self: zn.self });
         });
 
         // 방
@@ -968,8 +1003,8 @@
         W.labels.forEach(function (lb) {
           if (!lb.zone) return;
           var m = (snap.machines || []).filter(function (x) { return x.name === lb.zone; })[0];
-          var html = '<b>' + esc(lb.zone) + '</b> 층' + (m ? '<span>' + esc(m.ago) + ' 전 동기화</span>' : '');
-          if (lb.html !== html) { lb.el.innerHTML = html; lb.html = html; }
+          var html = '<b>' + esc(lb.zone) + '</b> 층' + (lb.self ? '<span>이 컴퓨터</span>' : m ? '<span>' + esc(m.ago) + ' 전 동기화</span>' : '');
+          if (lb.html !== html) { lb.el.innerHTML = html; lb.html = html; lb.w = 0; }
         });
       }
 
@@ -1344,7 +1379,7 @@
       // ---------- 장면 받기 ----------
       function update(s) {
         snap = s;
-        var key = JSON.stringify([look.theme, skyKind(s.hour), colsFor(s.rooms.length), s.rooms.map(function (r) { return [r.name, r.k, r.kind, r.machine]; })]);
+        var key = JSON.stringify([look.theme, skyKind(s.hour), colsFor(s.rooms.length), s.self || '', s.rooms.map(function (r) { return [r.name, r.k, r.kind, r.machine]; })]);
         var relayout = false;
         if (key !== builtKey) {
           if (W) {
@@ -1745,12 +1780,27 @@
 
       function layoutOverlays() {
         var focal = ch / (2 * Math.tan(camera.fov * Math.PI / 360));
+        var placed = [];   // 화면에 놓인 층 이름표·말풍선 (말풍선이 비켜 간다)
         W.labels.forEach(function (lb) {
           HV.set(lb.x, lb.y, lb.z);
           var ppm = focal / camera.position.distanceTo(HV), sp = screenOf(HV);
           var on = !!sp && sp.x > -240 && sp.x < cw + 240 && sp.y > -40 && sp.y < ch + 40 && (!lb.minPpm || ppm >= lb.minPpm) && lb.room !== focus;
+          if (lb.zone) on = !!sp && !focus;
           vis(lb.el, on);
           if (!on) return;
+          if (lb.zone) {
+            // 층 이름표: 건물 왼쪽 바깥에 붙이고, 그 자리가 화면 밖이면 화면 왼쪽 끝에 붙인다.
+            // 그때 높이는 띠가 그 자리를 지나는 높이로 맞춘다 (띠는 화면에서도 곧은 줄이다).
+            if (!lb.w) { lb.w = lb.el.offsetWidth; lb.h = lb.el.offsetHeight; }
+            var zx = clamp(sp.x - 10, lb.w + 8, cw - 8), zy = sp.y;
+            HV.set(W.width, lb.y, lb.z);
+            var sb = zx > sp.x ? screenOf(HV) : null;
+            if (sb && sb.x - sp.x > 1) zy += (sb.y - sp.y) * (zx - lb.w / 2 - sp.x) / (sb.x - sp.x);
+            if (zy < -40 || zy > ch + 40) { vis(lb.el, false); return; }
+            put(lb.el, zx, zy, '-100%', '-50%');
+            placed.push({ x: zx - lb.w, y: zy - lb.h / 2, w: lb.w, h: lb.h });
+            return;
+          }
           put(lb.el, sp.x, sp.y, lb.ax, lb.ay);
           if (lb.room) {
             // 멀리서 보면 방 이름만, 가까우면 상태까지
@@ -1805,7 +1855,6 @@
         items.forEach(function (it) { if (!it.a.bubSize) vis(it.a.bub, true); });
         items.forEach(function (it) { if (!it.a.bubSize) it.a.bubSize = { w: it.a.bub.offsetWidth, h: it.a.bub.offsetHeight }; });
         items.sort(function (p, q) { return q.prio - p.prio; });
-        var placed = [];
         items.forEach(function (it) {
           // 겹치면 위(아래)로 비켜 보고(방 안은 두 번, 멀리서는 한 번), 그래도 겹치면 감춘다.
           var s = it.a.bubSize, r = { x: it.x - s.w / 2, y: it.below ? it.y : it.y - s.h, w: s.w, h: s.h };
