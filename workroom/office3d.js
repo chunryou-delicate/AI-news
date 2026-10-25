@@ -42,7 +42,8 @@
     var BED_HIP = 0.62;              // 누웠을 때 엉덩이 뼈 높이 (침대 윗면 0.5)
     var SLEEP_AFTER = 30 * 60000;    // 이만큼 넘게 쉬면 수면실에서 잔다
     var WALL_H = 2.3, LOW_H = 1.0, WALL_T = 0.1;
-    var CW_H = 3.0, CW_GLASS = 2.55, CW_MOD = 1.5, CW_SPAN = 9;   // 바깥 커튼월: 높이, 유리 윗선(그 위는 층 슬래브 띠), 멀리언 간격, 유리 그림 한 장 폭
+    var CW_H = 3.0, CW_GLASS = 2.55, CW_MOD = 1.5, CW_O = 0.16;   // 바깥 커튼월: 높이, 유리 윗선(그 위는 층 슬래브 띠), 멀리언 간격, 바닥 가장자리에서 바깥으로 뺀 거리
+    var CITY_FLOOR = 32, FLOOR_H = 3.6;   // 도시 배경을 켜면 사무실이 이 층 높이에 있다 (아래로 건물 몸통과 거리)
     var PLATE_H = 0.5, PLATE_Y = 1.3;   // 유리 명패: 1배일 때 높이(m), 가운데 높이
     var PLATE_PPM = 256, PLATE_CW = 1024, PLATE_CH = 128;   // 명패 그림: 1m 에 256px
     var PLATE_MIN_PX = 22;              // 명패가 화면에서 이보다 낮게 보이면 유리 안에서 키운다 (이름 글씨 10px 쯤)
@@ -341,7 +342,7 @@
       renderer.setClearColor(PAL.bg);
       // 조명 설정 (테마, 밝기, 빛 색). 이 브라우저에 기억해 둔다.
       var LOOK_KEY = 'workroom-3d-look';
-      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1 };
+      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1, city: !coarse };   // 도시 배경은 폰에서는 처음에 끈다
       try { Object.assign(look, JSON.parse(localStorage.getItem(LOOK_KEY) || '{}')); } catch (_) {}
       if (!THEMES[look.theme]) look.theme = 'pastel';
       var aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -360,7 +361,8 @@
         '<button type="button" data-a="out" title="축소" aria-label="축소">−</button>' +
         '<button type="button" data-a="in" title="확대" aria-label="확대">+</button>' +
         '<button type="button" data-a="home" class="wide" title="전체 보기">전체</button>' +
-        '<button type="button" data-a="look" class="wide" title="사무실 색과 조명 바꾸기" aria-expanded="false">조명</button>';
+        '<button type="button" data-a="look" class="wide" title="사무실 색과 조명 바꾸기" aria-expanded="false">조명</button>' +
+        '<button type="button" data-a="city" class="wide" title="건물 아래 거리와 주변 빌딩 (느리면 끄세요)" aria-pressed="false">도시</button>';
       container.appendChild(tools);
       var lookPanel = document.createElement('div');
       lookPanel.className = 'o3-look';
@@ -387,7 +389,7 @@
       setTimeout(function () { hint.classList.add('fade'); }, 9000);
 
       var scene = new T.Scene();
-      var camera = new T.PerspectiveCamera(35, 1, 0.1, 800);
+      var camera = new T.PerspectiveCamera(35, 1, 0.4, 4500);
       var hemi = new T.HemisphereLight('#ffffff', '#d9cfc2', 0.75);
       var amb = new T.AmbientLight('#ffffff', 0.18);
       scene.add(hemi, amb);
@@ -445,50 +447,6 @@
         }
         var t = new T.CanvasTexture(c);
         t.wrapS = t.wrapT = T.RepeatWrapping;
-        t.anisotropy = aniso;
-        t.encoding = T.sRGBEncoding;
-        return t;
-      }
-      // 커튼월 유리에 비치는 바깥: 위는 짙고 아래는 옅은 하늘, 먼 빌딩 두 겹(밤에는 불 켜진 창), 비스듬한 반사광.
-      // 그림 한 장이 CW_SPAN(9m) 폭이고 벽을 따라 되풀이한다. 늘 같은 그림이 나오게 난수 씨앗을 고정한다.
-      function skylineTexture(kind) {
-        var c = document.createElement('canvas'), W2 = 1024, H2 = 256;
-        c.width = W2; c.height = H2;
-        var x = c.getContext('2d');
-        // [하늘 위, 하늘 아래, 먼 빌딩, 가까운 빌딩, 불 켜진 창(없으면 안 그림), 반사광]
-        var SK = {
-          day: ['#8fc6ea', '#e2f1fa', '#c3d6e4', '#a9c0d2', null, 'rgba(255,255,255,0.16)'],
-          dusk: ['#d98a72', '#f7d2aa', '#d3a493', '#bb8d82', 'rgba(255,226,170,0.7)', 'rgba(255,236,210,0.14)'],
-          night: ['#16234a', '#34487c', '#26325a', '#1b2445', 'rgba(255,214,120,0.85)', 'rgba(200,215,255,0.07)']
-        }, S = SK[kind] || SK.day;
-        var gr = x.createLinearGradient(0, 0, 0, H2);
-        gr.addColorStop(0, S[0]);
-        gr.addColorStop(1, S[1]);
-        x.fillStyle = gr;
-        x.fillRect(0, 0, W2, H2);
-        var seed = 11;
-        function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
-        [[S[2], 0.34, 0.62], [S[3], 0.16, 0.38]].forEach(function (L) {
-          for (var bx = -10; bx < W2; ) {
-            var bw = 34 + rnd() * 80, bh = Math.round(H2 * (L[1] + rnd() * (L[2] - L[1])));
-            x.fillStyle = L[0];
-            x.fillRect(Math.round(bx), H2 - bh, Math.round(bw), bh);
-            if (S[4]) {
-              x.fillStyle = S[4];
-              for (var wy = H2 - bh + 8; wy < H2 - 6; wy += 11) for (var wx = bx + 6; wx < bx + bw - 6; wx += 10) if (rnd() < 0.35) x.fillRect(Math.round(wx), wy, 4, 5);
-            }
-            bx += bw + 4 + rnd() * 18;
-          }
-        });
-        x.fillStyle = S[5];
-        [[120, 70], [470, 46], [760, 90]].forEach(function (r) {
-          x.beginPath();
-          x.moveTo(r[0], 0); x.lineTo(r[0] + r[1], 0); x.lineTo(r[0] + r[1] - 150, H2); x.lineTo(r[0] - 150, H2);
-          x.closePath();
-          x.fill();
-        });
-        var t = new T.CanvasTexture(c);
-        t.wrapS = T.RepeatWrapping;
         t.anisotropy = aniso;
         t.encoding = T.sRGBEncoding;
         return t;
@@ -609,7 +567,7 @@
       }
 
       function roomGeo(r, x0, z0, row) {
-        var k = r.k, w = roomWidth(k), tlen = k * SEAT + 0.3, tx0 = x0 + 1.1;
+        var k = r.k, w = roomWidth(k), tlen = k * SEAT + 0.3, tx0 = x0 + 0.85;   // 탁자 양 끝에 머리 자리 의자가 들어가게 조금 왼쪽으로
         var R = {
           name: r.name, kind: r.kind, k: k, x0: x0, z0: z0, w: w, x1: x0 + w, z1: z0 + ROOM_D, row: row,
           xSide: x0 + w - 0.85, zBack: z0 + 0.72, zFar: z0 + 1.52, zTable: z0 + 2.55, zNear: z0 + 3.58, zFront: z0 + 4.5, zDoor: z0 + ROOM_D - 0.45,
@@ -768,6 +726,33 @@
           mesh(G.ico, M.plant, 0.5 * sc, 0.48 * sc, 0.5 * sc, x + 0.16 * sc, 1.72 * sc, z - 0.08 * sc, root);
         }
         function rug(x, z, w, d, m) { box(w, 0.008, d, m || M.rug, x, 0.016, z); }
+        // 침대 이불 두 벌: 빈 침대는 발치에 개어 둔 이불, 누가 자면 어깨 아래를 덮는 볼록한 이불 (frame 에서 바꿔 보인다)
+        function blanket(x, z, m) {
+          var folded = new T.Group(), draped = new T.Group();
+          folded.position.set(x, 0, z);
+          draped.position.set(x, 0, z);
+          mesh(G.box, m, 0.88, 0.07, 0.42, 0, 0.535, 0.62, folded);
+          mesh(G.box, m, 0.84, 0.06, 0.38, 0, 0.6, 0.62, folded);
+          mesh(G.box, M.white, 0.85, 0.015, 0.06, 0, 0.635, 0.45, folded);
+          mesh(G.box, m, 0.98, 0.05, 1.56, 0, 0.525, 0.3, draped);
+          mesh(G.box, m, 0.03, 0.16, 1.56, -0.49, 0.44, 0.3, draped);
+          mesh(G.box, m, 0.03, 0.16, 1.56, 0.49, 0.44, 0.3, draped);
+          mesh(G.box, m, 0.98, 0.16, 0.03, 0, 0.44, 1.08, draped);
+          var mound = mesh(G.sph, m, 0.86, 0.62, 1.56, 0, 0.56, 0.3, draped);
+          mesh(G.box, m, 0.8, 0.22, 0.8, 0, 0.63, 0.62, draped);   // 발끝이 이불 밖으로 비치지 않게 다리 쪽을 조금 더 높게
+          mound.castShadow = true;
+          mesh(G.box, M.white, 0.97, 0.06, 0.14, 0, 0.535, -0.43, draped);
+          draped.visible = false;
+          dyn.add(folded, draped);
+          return { folded: folded, draped: draped };
+        }
+        function chairAt(g, seatMat) {   // chair 와 같은 모양을 묶음 g 안에 (앞 = +z)
+          box(0.48, 0.08, 0.48, seatMat, 0, 0.45, 0, g);
+          box(0.48, 0.5, 0.07, seatMat, 0, 0.78, -0.25, g);
+          box(0.05, 0.38, 0.05, M.metal, 0, 0.22, 0, g);
+          box(0.5, 0.04, 0.08, M.chair, 0, 0.04, 0, g);
+          box(0.08, 0.04, 0.5, M.chair, 0, 0.04, 0, g);
+        }
         function armchairAt(g) {   // armchair 와 같은 모양을 묶음 g 안에 (앞 = +z)
           box(0.7, 0.4, 0.62, M.sofa, 0, 0.2, 0, g);
           box(0.62, 0.1, 0.56, M.sofaSeat, 0, 0.44, 0.02, g);
@@ -907,6 +892,14 @@
                 R.laptops.near.push(laptop(x, R.zTable + 0.3, -1));
               }
             });
+            // 탁자 양 끝 머리 자리 의자 (빈 자리를 채운다. 오른쪽은 문 쪽 통로에 닿지 않게)
+            if (lounge) {
+              armchairAt(grp(R.tx0 - 0.25, R.zTable, Math.PI / 2));
+              armchairAt(grp(R.tx0 + R.tlen + 0.25, R.zTable, -Math.PI / 2));
+            } else {
+              chairAt(grp(R.tx0 - 0.42, R.zTable, Math.PI / 2), seatMat);
+              chairAt(grp(R.tx0 + R.tlen + 0.42, R.zTable, -Math.PI / 2), seatMat);
+            }
             plant(x0 + 0.45, z1 - 0.45, 1);
             // 화이트보드 (뒷벽)
             var bw = Math.min(2.4, R.tlen * 0.8), bh = bw * 272 / 512;
@@ -1307,13 +1300,12 @@
           box(1.0, 0.36, 2.05, M.tableEdge, bxx, 0.18, bedZ);
           box(0.92, 0.14, 1.95, M.white, bxx, 0.43, bedZ);
           box(0.62, 0.1, 0.34, M.white, bxx, 0.55, bedZ - 0.75);
-          box(0.96, 0.08, 1.2, M.seats[bi % M.seats.length], bxx, 0.52, bedZ + 0.35);
           box(1.0, 0.7, 0.08, M.tableEdge, bxx, 0.35, bedZ - 1.02);
           if (bi < nBeds - 1) {
             box(0.36, 0.5, 0.36, M.tableEdge, bxx + 0.75, 0.25, bedZ - 0.75);
             box(0.18, 0.18, 0.18, M.led, bxx + 0.75, 0.6, bedZ - 0.75);
           }
-          breaks.push({ key: 'bed' + bi, place: napR.place(bedZ - 1.5), x: bxx, ax: bxx, z: bedZ, yaw: 0, pose: 'sleep', sleep: true });
+          breaks.push({ key: 'bed' + bi, place: napR.place(bedZ - 1.5), x: bxx, ax: bxx, z: bedZ, yaw: 0, pose: 'sleep', sleep: true, cover: blanket(bxx, bedZ, M.seats[bi % M.seats.length]) });
           box(0.1, 0.04, 0.24, M.seats[(bi + 2) % M.seats.length], bxx - 0.08, 0.04, rz1 - 0.5);
           box(0.1, 0.04, 0.24, M.seats[(bi + 2) % M.seats.length], bxx + 0.08, 0.04, rz1 - 0.48);
         }
@@ -1361,12 +1353,12 @@
         mesh(G.sph, M.bulb, 0.34, 0.34, 0.34, xC + 0.42, 0.19, rz1 - 0.42, root);
         mesh(G.cyl, M.tableEdge, 0.3, 0.04, 0.3, xC + 0.42, 0.02, rz1 - 0.42, root);
 
-        // 바깥벽: 사방 커튼월 (바닥부터 유리, 1.5m 마다 세로 멀리언, 위쪽 가로대, 맨 위는 층 슬래브 띠).
-        // 유리에는 바깥 하늘과 먼 빌딩이 비친다. 카메라가 어느 면 바깥쪽으로 돌면 그 면은 감추고 아래 턱만 남긴다.
+        // 바깥벽: 사방 커튼월 (바닥부터 투명한 유리, 1.5m 마다 세로 멀리언, 위쪽 가로대, 맨 위는 층 슬래브 띠).
+        // 도시 배경을 켜면 유리 너머로 거리와 빌딩이 보인다. 카메라가 어느 면 바깥쪽으로 돌면 그 면은 감추고 아래 턱만 남긴다.
         // 왼쪽 면의 엘리베이터 자리는 막힌 벽.
-        var cwTex = skylineTexture(skyKind(s.hour)), cwMat = new T.MeshBasicMaterial({ map: cwTex });
-        trash.push(cwTex, cwMat);
-        var CW_O = 0.16, cwLenX = maxX + CW_O * 2, cwLenZ = lobby.z1 + CW_O * 2;
+        var cwMat = new T.MeshLambertMaterial({ color: '#b4cfe3', transparent: true, opacity: 0.2, depthWrite: false, side: T.DoubleSide });
+        trash.push(cwMat);
+        var cwLenX = maxX + CW_O * 2, cwLenZ = lobby.z1 + CW_O * 2;
         function curtainWall(x, z, rot, len, solid) {   // (x, z) 에서 시작해 len 만큼, 안쪽이 로컬 +z
           var parts = new T.Group(), panes = new T.Group();
           [parts, panes].forEach(function (o) { o.position.set(x, 0, z); o.rotation.y = rot; });
@@ -1389,8 +1381,7 @@
           spans.forEach(function (sp) {
             var gw = sp[1] - sp[0], gh = CW_GLASS - 0.1;
             if (gw <= 0.05) return;
-            var geo = new T.PlaneGeometry(gw, gh), uv = geo.attributes.uv;
-            for (var k = 0; k < uv.count; k++) uv.setX(k, (sp[0] + uv.getX(k) * gw) / CW_SPAN);
+            var geo = new T.PlaneGeometry(gw, gh);
             trash.push(geo);
             var pm = new T.Mesh(geo, cwMat);
             pm.position.set((sp[0] + sp[1]) / 2, 0.1 + gh / 2, -0.02);
@@ -1420,6 +1411,7 @@
         W.dyn = dyn;
         scene.add(W.merged, keep, dyn);
         maxDist = 0;
+        if (look.city) attachCity(s.hour);
       }
 
       function spotLabel(text) {
@@ -1436,8 +1428,429 @@
         W.trash.forEach(function (t) { t.dispose(); });
         W.labels.forEach(function (lb) { lb.el.remove(); });
         Object.keys(actors).forEach(function (id) { if (actors[id].brk) actors[id].brk = null; });
+        detachCity();
         W = null;
       }
+
+      // ---------- 도시 배경 (도구 막대의 '도시' 단추로 켜고 끈다. 느린 컴퓨터는 끄면 된다) ----------
+      // 사무실은 CITY_FLOOR 층. 그 아래로 우리 건물 몸통(층마다 슬래브 띠가 있는 유리 외벽)과 저층부 옥상 정원,
+      // 둘레는 바둑판 도로(차선·횡단보도·달리는 차)와 여러 모양·높이의 빌딩(유리 타워, 사무 빌딩, 아파트 단지, 저층 상가),
+      // 공원, 북쪽 강과 다리, 더 멀리는 안개 속 빌딩 숲. 가까운 건물은 사무실 바닥보다 낮게 둬서 화면을 가리지 않는다.
+      // 건물은 외벽 모양별 재료 몇 개에 모두 합쳐 그리고, 나무와 차는 InstancedMesh 라서 그리기 횟수가 적다.
+      var CITY_SKY = {
+        day: { fog: '#c9d9e6', road: '#5a6069', walk: '#cec8bd', lot: '#bcb6ab', park: '#93bf7e', water: '#6d9cc2', lane: '#f2f1ea', mid: '#e7c34c', bridge: '#a7a39b', light: 1, glow: 0 },
+        dusk: { fog: '#d8ab94', road: '#4b4950', walk: '#b6a396', lot: '#a69488', park: '#7d9868', water: '#878cad', lane: '#e9dccb', mid: '#e0b24a', bridge: '#958980', light: 0.72, glow: 0.55 },
+        night: { fog: '#141c33', road: '#1d2129', walk: '#373a42', lot: '#2c2f37', park: '#22322a', water: '#182640', lane: '#7b786d', mid: '#7b6a35', bridge: '#4a4a52', light: 0.34, glow: 1 }
+      };
+      var city = null;
+      function attachCity(hour) {
+        detachCity();
+        if (!W) return;
+        city = makeCity(hour);
+        scene.add(city.group);
+        scene.fog = city.fog;
+        renderer.setClearColor(city.bg);
+        refitDist();
+      }
+      function detachCity() {
+        if (!city) return;
+        scene.remove(city.group);
+        city.dispose();
+        city = null;
+        scene.fog = null;
+        renderer.setClearColor(PAL.bg);
+        refitDist();
+      }
+      // 도시가 있으면 더 멀리까지 물러나 볼 수 있게 (전체 보기 거리는 그대로)
+      function refitDist() {
+        if (!W || !cw) return;
+        var f = overview();
+        if (!userMoved && !focus) flyTo(f);
+      }
+
+      function makeCity(hour) {
+        var C = CITY_SKY[skyKind(hour)], G0 = -CITY_FLOOR * FLOOR_H, night = skyKind(hour) === 'night';
+        var bw = W.width, bd = W.depth, cx = bw / 2, cz = bd / 2, GR = 640;
+        var group = new T.Group(), junk = [];
+        var seed = 20251025;
+        function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+        function pick(a) { return a[Math.floor(rnd() * a.length)]; }
+        function col(hex, k) { var c = new T.Color(hex); if (k != null) c.multiplyScalar(k); return c; }
+
+        // 도로망: 우리 블록(건물 + 저층부 + 보도) 둘레부터 바깥으로 RW 폭 도로, BLK 블록
+        var RW = 16, BLK = 76, POD = 10;
+        var tx0 = -CW_O, tx1 = bw + CW_O, tz0 = -CW_O, tz1 = bd + CW_O;
+        var hx = bw / 2 + CW_O + POD + 8, hz = bd / 2 + CW_O + POD + 8;
+        function roadCenters(c, h) {
+          var out = [];
+          for (var p = h + RW / 2; p < GR; p += RW + BLK) out.push(c + p, c - p);
+          return out.sort(function (a, b) { return a - b; });
+        }
+        function spans(r) { var out = []; for (var i = 0; i + 1 < r.length; i++) out.push([r[i] + RW / 2, r[i + 1] - RW / 2]); return out; }
+        var rx = roadCenters(cx, hx), rz = roadCenters(cz, hz), bxs = spans(rx), bzs = spans(rz);
+        var ic = 0;
+        bzs.forEach(function (sp, j) { if (sp[0] <= cz && sp[1] >= cz) ic = j; });
+        var riverRow = ic - 2, rv = bzs[riverRow] || null;   // 우리 건물 북쪽 두 블록 너머로 강이 지난다
+        // 다리는 세 도로에 하나 (우리 건물 양옆 도로는 늘 다리)
+        var inner = rx.slice().sort(function (a, b) { return Math.abs(a - cx) - Math.abs(b - cx); }).slice(0, 2);
+        var bridge = {};
+        rx.forEach(function (x, i) { if (i % 3 === 1 || inner.indexOf(x) >= 0) bridge[x] = true; });
+
+        // ---- 땅 그림 (도로·차선·횡단보도·보도·공원·강). 2048px 한 장이 GR*2 m 를 덮는다
+        var GS = 2048, PX = GS / (2 * GR), gcv = document.createElement('canvas');
+        gcv.width = gcv.height = GS;
+        var g = gcv.getContext('2d');
+        function X(x) { return (x - (cx - GR)) * PX; }
+        function Z(z) { return (z - (cz - GR)) * PX; }
+        function rect(x0, z0, x1, z1, c) { g.fillStyle = c; g.fillRect(X(x0), Z(z0), (x1 - x0) * PX, (z1 - z0) * PX); }
+        g.fillStyle = C.road;
+        g.fillRect(0, 0, GS, GS);
+        // 차선: 가운데 노란 겹선, 양쪽 흰 점선
+        g.lineWidth = Math.max(1, 0.2 * PX);
+        rx.forEach(function (x) {
+          g.setLineDash([]); g.strokeStyle = C.mid;
+          [-0.25, 0.25].forEach(function (o) { g.beginPath(); g.moveTo(X(x + o), 0); g.lineTo(X(x + o), GS); g.stroke(); });
+          g.setLineDash([3 * PX, 5 * PX]); g.strokeStyle = C.lane;
+          [-RW / 4, RW / 4].forEach(function (o) { g.beginPath(); g.moveTo(X(x + o), 0); g.lineTo(X(x + o), GS); g.stroke(); });
+        });
+        rz.forEach(function (z) {
+          g.setLineDash([]); g.strokeStyle = C.mid;
+          [-0.25, 0.25].forEach(function (o) { g.beginPath(); g.moveTo(0, Z(z + o)); g.lineTo(GS, Z(z + o)); g.stroke(); });
+          g.setLineDash([3 * PX, 5 * PX]); g.strokeStyle = C.lane;
+          [-RW / 4, RW / 4].forEach(function (o) { g.beginPath(); g.moveTo(0, Z(z + o)); g.lineTo(GS, Z(z + o)); g.stroke(); });
+        });
+        g.setLineDash([]);
+        // 교차로: 차선을 지우고 네 방향 횡단보도
+        rx.forEach(function (x) {
+          rz.forEach(function (z) {
+            rect(x - RW / 2, z - RW / 2, x + RW / 2, z + RW / 2, C.road);
+            g.fillStyle = C.lane;
+            for (var o = -RW / 2 + 1.2; o < RW / 2 - 1; o += 1.3) {
+              g.fillRect(X(x + o), Z(z - RW / 2 - 3.4), 0.65 * PX, 3 * PX);
+              g.fillRect(X(x + o), Z(z + RW / 2 + 0.4), 0.65 * PX, 3 * PX);
+              g.fillRect(X(x - RW / 2 - 3.4), Z(z + o), 3 * PX, 0.65 * PX);
+              g.fillRect(X(x + RW / 2 + 0.4), Z(z + o), 3 * PX, 0.65 * PX);
+            }
+          });
+        });
+
+        // ---- 건물: 외벽 모양별로 모아 한 덩어리씩
+        var TILE = { glass: [6, 7.2], office: [6, 7.2], apt: [6, 5.6], low: [8, 8], roof: [1, 1] };
+        var B = {};
+        function bucket(k) { return B[k] || (B[k] = { p: [], n: [], u: [], c: [] }); }
+        function quad(k, a, b, c2, d, n, uv, cl) {
+          var bk = bucket(k), vs = [a, b, c2, a, c2, d], us = [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]];
+          for (var i = 0; i < 6; i++) {
+            bk.p.push(vs[i][0], vs[i][1], vs[i][2]);
+            bk.n.push(n[0], n[1], n[2]);
+            bk.u.push(us[i][0], us[i][1]);
+            bk.c.push(cl.r, cl.g, cl.b);
+          }
+        }
+        // 상자 건물 (옆면은 외벽 k, 윗면은 지붕 roofC). 창이 층에 맞게 땅에서부터 잰 높이로 UV 를 준다
+        function boxB(k, x0, x1, z0, z1, y0, y1, cl, roofC) {
+          var t = TILE[k], v0 = (y0 - G0) / t[1], v1 = (y1 - G0) / t[1], ux = (x1 - x0) / t[0], uz = (z1 - z0) / t[0];
+          quad(k, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], [0, v0, ux, v1], cl);
+          quad(k, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], [0, v0, ux, v1], cl);
+          quad(k, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], [0, v0, uz, v1], cl);
+          quad(k, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], [0, v0, uz, v1], cl);
+          if (roofC) quad('roof', [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], [0, 0, 0, 0], roofC);
+        }
+        function cylB(k, x, z, r, y0, y1, cl, roofC) {
+          var t = TILE[k], v0 = (y0 - G0) / t[1], v1 = (y1 - G0) / t[1], n = 18, du = 2 * Math.PI * r / n / t[0], rb = bucket('roof');
+          for (var i = 0; i < n; i++) {
+            var a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2, am = (a0 + a1) / 2;
+            var p0 = [x + r * Math.sin(a0), z + r * Math.cos(a0)], p1 = [x + r * Math.sin(a1), z + r * Math.cos(a1)];
+            quad(k, [p0[0], y0, p0[1]], [p1[0], y0, p1[1]], [p1[0], y1, p1[1]], [p0[0], y1, p0[1]], [Math.sin(am), 0, Math.cos(am)], [i * du, v0, (i + 1) * du, v1], cl);
+            [[x, y1, z], [p0[0], y1, p0[1]], [p1[0], y1, p1[1]]].forEach(function (v) { rb.p.push(v[0], v[1], v[2]); rb.n.push(0, 1, 0); rb.u.push(0, 0); rb.c.push(roofC.r, roofC.g, roofC.b); });
+          }
+        }
+        var ROOF = [col('#a9adb2'), col('#9da3a8'), col('#b8b2a8'), col('#8e959c')], MECH = col('#c9cdd1'), GARDEN = col('#8db57a');
+        var TINT = {
+          glass: [col('#d4e4ff'), col('#c9efe8'), col('#e8e8ea'), col('#d6def0'), col('#bfd6ea'), col('#e4dcd0')],
+          office: [col('#ffffff'), col('#f2e6d8'), col('#e3e8ee'), col('#f4dcce'), col('#e6e0d4')],
+          apt: [col('#ffffff'), col('#f6f1e7'), col('#eef2f6')],
+          low: [col('#efc3ab'), col('#e2cfae'), col('#cfdcc6'), col('#e6cfb5'), col('#cfd6e0'), col('#d9b0a0'), col('#f0e4c8')]
+        };
+        var BAND = [col('#3f7fc0'), col('#c0503f'), col('#3f9a6a'), col('#d49a2a'), col('#7a55b0')];   // 아파트 꼭대기 띠
+        // 옥상 기계실·물탱크, 아주 높은 탑은 안테나
+        function rooftop(x0, x1, z0, z1, top) {
+          var w = x1 - x0, d = z1 - z0;
+          if (top - G0 < 25 || w < 8 || d < 8) return;
+          var mw = w * (0.25 + rnd() * 0.2), md = d * (0.25 + rnd() * 0.2), mx = x0 + w * (0.2 + rnd() * 0.4), mz = z0 + d * (0.2 + rnd() * 0.4);
+          boxB('roof', mx, mx + mw, mz, mz + md, top, top + 3 + rnd() * 3, MECH, MECH);
+          if (top - G0 > 150 && rnd() < 0.6) boxB('roof', x0 + w / 2 - 0.4, x0 + w / 2 + 0.4, z0 + d / 2 - 0.4, z0 + d / 2 + 0.4, top, top + 12 + rnd() * 14, MECH, MECH);
+        }
+        // 빌딩 하나: 높으면 2~3 단으로 들어가며 올라간다
+        function tower(x0, x1, z0, z1, h, k) {
+          var cl = pick(TINT[k]), roofC = pick(ROOF), y = G0;
+          if (k === 'glass' && rnd() < 0.12 && Math.abs((x1 - x0) - (z1 - z0)) < 10) {
+            var r = Math.min(x1 - x0, z1 - z0) / 2;
+            cylB(k, (x0 + x1) / 2, (z0 + z1) / 2, r, G0, G0 + h, cl, roofC);
+            return;
+          }
+          var tiers = h > 70 && rnd() < 0.45 ? (h > 130 && rnd() < 0.5 ? 3 : 2) : 1;
+          for (var t = 0; t < tiers; t++) {
+            var top = t === tiers - 1 ? G0 + h : G0 + h * (t === 0 ? 0.45 + rnd() * 0.2 : 0.74 + rnd() * 0.1);
+            boxB(k, x0, x1, z0, z1, y, top, cl, roofC);
+            var ix = (x1 - x0) * (0.1 + rnd() * 0.1), iz = (z1 - z0) * (0.1 + rnd() * 0.1);
+            if (t < tiers - 1) { x0 += ix; x1 -= ix; z0 += iz; z1 -= iz; }
+            y = top;
+          }
+          rooftop(x0, x1, z0, z1, G0 + h);
+        }
+
+        var trees = [];
+        function treeAt(x, z, r, y) { trees.push(x, z, r, y == null ? G0 : y); }
+        function lawnTrees(x0, x1, z0, z1, n) { for (var i = 0; i < n; i++) treeAt(x0 + rnd() * (x1 - x0), z0 + rnd() * (z1 - z0), 2 + rnd() * 2.2); }
+
+        // ---- 우리 건물: 저층부(옥상 정원) 위로 유리 몸통이 사무실 바닥 바로 아래까지
+        var podH = 3 * FLOOR_H + 1.4;
+        boxB('office', tx0 - POD, tx1 + POD, tz0 - POD, tz1 + POD, G0, G0 + podH, col('#f4efe6'), GARDEN);
+        boxB('glass', tx0, tx1, tz0, tz1, G0 + podH, -0.03, col('#dce9f6'), null);
+        boxB('roof', cx - 14, cx + 14, tz1 + POD, tz1 + POD + 5, G0 + 5.4, G0 + 6, col('#e9ecef'), col('#e9ecef'));   // 정문 차양
+        for (var pt = 0; pt < 1; pt += 0.035) {
+          var per = 2 * (tx1 - tx0 + tz1 - tz0 + 4 * POD) * pt, gx0 = tx0 - POD + 3, gx1 = tx1 + POD - 3, gz0 = tz0 - POD + 3, gz1 = tz1 + POD - 3, L1 = gx1 - gx0, L2 = gz1 - gz0;
+          var qx, qz, pp = per % (2 * (L1 + L2));
+          if (pp < L1) { qx = gx0 + pp; qz = gz0; } else if (pp < L1 + L2) { qx = gx1; qz = gz0 + pp - L1; } else if (pp < 2 * L1 + L2) { qx = gx1 - (pp - L1 - L2); qz = gz1; } else { qx = gx0; qz = gz1 - (pp - 2 * L1 - L2); }
+          treeAt(qx, qz, 1.8 + rnd() * 0.8, G0 + podH);
+        }
+
+        // ---- 블록마다 채우기
+        bxs.forEach(function (sx) {
+          bzs.forEach(function (sz, j) {
+            var x0 = sx[0], x1 = sx[1], z0 = sz[0], z1 = sz[1], mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+            var ours = x0 <= cx && x1 >= cx && z0 <= cz && z1 >= cz;
+            rect(x0, z0, x1, z1, C.walk);
+            if (ours) {
+              rect(x0 + 2, z0 + 2, x1 - 2, z1 - 2, shadeHex(C.walk, 1.06));
+              for (var tz = z0 + 4; tz < z1 - 2; tz += 9) { treeAt(x0 + 4, tz, 2.4); treeAt(x1 - 4, tz, 2.4); }
+              return;
+            }
+            if (j === riverRow) return;   // 강은 아래에서 한 번에 그린다
+            var ins = 3.5, lx0 = x0 + ins, lx1 = x1 - ins, lz0 = z0 + ins, lz1 = z1 - ins;
+            var dist = Math.max(Math.abs(mx - cx) - hx, Math.abs(mz - cz) - hz), hmax = dist < 170 ? 98 : 230;
+            var nearRiver = j === riverRow - 1 || j === riverRow + 1, r = rnd();
+            var type = nearRiver && r < 0.4 ? 'park' : r < 0.08 ? 'park' : r < 0.3 ? 'apt' : r < 0.68 ? 'biz' : 'low';
+            for (var st = x0 + 7; st < x1 - 3; st += 12) { treeAt(st, z0 + 1.6, 2); treeAt(st, z1 - 1.6, 2); }   // 가로수
+            if (type === 'park') {
+              rect(lx0, lz0, lx1, lz1, C.park);
+              g.strokeStyle = C.walk; g.lineWidth = 2.2 * PX;
+              g.beginPath(); g.moveTo(X(lx0), Z(lz0 + (lz1 - lz0) * 0.3)); g.quadraticCurveTo(X(mx), Z(mz + 18), X(lx1), Z(lz0 + (lz1 - lz0) * 0.7)); g.stroke();
+              if (rnd() < 0.5) { g.fillStyle = C.water; g.beginPath(); g.ellipse(X(mx + 10), Z(mz - 10), 14 * PX, 9 * PX, 0.3, 0, Math.PI * 2); g.fill(); }
+              lawnTrees(lx0 + 2, lx1 - 2, lz0 + 2, lz1 - 2, 26 + Math.floor(rnd() * 16));
+            } else if (type === 'apt') {   // 아파트 단지: 나란한 판상형 동, 꼭대기 색 띠, 동 사이 잔디와 나무
+              rect(lx0, lz0, lx1, lz1, mixHex(C.park, C.lot, 0.5));
+              var band = pick(BAND), cl = pick(TINT.apt);
+              for (var az = lz0 + 6; az + 13 <= lz1 - 4; az += 25) {
+                var ah = Math.min(hmax, 42 + rnd() * 30);
+                boxB('apt', lx0 + 5, lx1 - 5, az, az + 13, G0, G0 + ah - 2.5, cl, null);
+                boxB('roof', lx0 + 5, lx1 - 5, az, az + 13, G0 + ah - 2.5, G0 + ah, band, pick(ROOF));
+                lawnTrees(lx0 + 4, lx1 - 4, az + 15, az + 22, 5);
+              }
+            } else if (type === 'biz') {   // 업무 지구: 1~4 필지에 유리·사무 빌딩
+              rect(lx0, lz0, lx1, lz1, C.lot);
+              var sxn = rnd() < 0.6 ? 2 : 1, szn = rnd() < 0.6 ? 2 : 1, pw = (lx1 - lx0) / sxn, pd = (lz1 - lz0) / szn;
+              for (var a = 0; a < sxn; a++) {
+                for (var b = 0; b < szn; b++) {
+                  var px0 = lx0 + a * pw, pz0 = lz0 + b * pd, sb = 3 + rnd() * 4;
+                  var h = 22 + Math.pow(rnd(), 1.5) * (hmax - 22);
+                  tower(px0 + sb, px0 + pw - sb, pz0 + sb, pz0 + pd - sb, h, rnd() < 0.55 ? 'glass' : 'office');
+                }
+              }
+            } else {   // 저층 상가·주택, 군데군데 주차장
+              rect(lx0, lz0, lx1, lz1, C.lot);
+              var n = 3, cwid = (lx1 - lx0) / n, cdep = (lz1 - lz0) / n;
+              for (var p = 0; p < n; p++) {
+                for (var q = 0; q < n; q++) {
+                  var qx0 = lx0 + p * cwid, qz0 = lz0 + q * cdep;
+                  if (rnd() < 0.2) {
+                    g.strokeStyle = C.lane; g.lineWidth = Math.max(1, 0.15 * PX);
+                    for (var ps = qx0 + 2; ps < qx0 + cwid - 2; ps += 2.6) { g.beginPath(); g.moveTo(X(ps), Z(qz0 + 3)); g.lineTo(X(ps), Z(qz0 + 8)); g.stroke(); }
+                    continue;
+                  }
+                  var e = 1.5 + rnd() * 2.5;
+                  tower(qx0 + e, qx0 + cwid - e, qz0 + e, qz0 + cdep - e, 7 + rnd() * 20, 'low');
+                }
+              }
+            }
+          });
+        });
+        // 강: 둑길 사이를 끝까지 흐르고, 다리가 있는 도로만 건너간다 (난간은 밝은 줄)
+        if (rv) {
+          rect(cx - GR, rv[0] + 3, cx + GR, rv[1] - 3, C.water);
+          rx.forEach(function (x) {
+            if (!bridge[x]) return;
+            rect(x - RW / 2, rv[0] + 3, x + RW / 2, rv[1] - 3, C.road);
+            g.fillStyle = C.mid;
+            [-0.25, 0.25].forEach(function (o) { g.fillRect(X(x + o) - 0.5, Z(rv[0] + 3), Math.max(1, 0.2 * PX), (rv[1] - rv[0] - 6) * PX); });
+            rect(x - RW / 2 - 0.9, rv[0] + 2, x - RW / 2, rv[1] - 2, C.bridge);
+            rect(x + RW / 2, rv[0] + 2, x + RW / 2 + 0.9, rv[1] - 2, C.bridge);
+          });
+        }
+        // 밤에는 가로등 불빛
+        if (C.glow > 0.5) {
+          rx.forEach(function (x) { for (var z = cz - GR; z < cz + GR; z += 24) { glowDot(x - RW / 2 - 1, z); glowDot(x + RW / 2 + 1, z + 12); } });
+          rz.forEach(function (z) { for (var x = cx - GR; x < cx + GR; x += 24) { glowDot(x, z - RW / 2 - 1); glowDot(x + 12, z + RW / 2 + 1); } });
+        }
+        function glowDot(x, z) {
+          var gr = g.createRadialGradient(X(x), Z(z), 0, X(x), Z(z), 5 * PX);
+          gr.addColorStop(0, 'rgba(255,214,140,0.45)');
+          gr.addColorStop(1, 'rgba(255,214,140,0)');
+          g.fillStyle = gr;
+          g.fillRect(X(x) - 5 * PX, Z(z) - 5 * PX, 10 * PX, 10 * PX);
+        }
+        // 가장자리는 먼 땅 색으로 흐리게 (그 너머 큰 땅과 이어지게)
+        var edge = g.createRadialGradient(GS / 2, GS / 2, GS * 0.36, GS / 2, GS / 2, GS * 0.5);
+        edge.addColorStop(0, hexA(C.lot, 0));
+        edge.addColorStop(1, hexA(C.lot, 1));
+        g.fillStyle = edge;
+        g.fillRect(0, 0, GS, GS);
+        g.fillStyle = C.lot;
+        [[0, 0, GS, 2], [0, GS - 2, GS, 2], [0, 0, 2, GS], [GS - 2, 0, 2, GS]].forEach(function (r) { g.fillRect(r[0], r[1], r[2], r[3]); });
+        var gtex = new T.CanvasTexture(gcv);
+        gtex.anisotropy = aniso;
+        gtex.encoding = T.sRGBEncoding;
+        var gmat = new T.MeshBasicMaterial({ map: gtex });
+        var ground = new T.Mesh(new T.PlaneGeometry(GR * 2, GR * 2), gmat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(cx, G0, cz);
+        var farMat = new T.MeshBasicMaterial({ color: C.lot });
+        var farGround = new T.Mesh(new T.PlaneGeometry(9000, 9000), farMat);
+        farGround.rotation.x = -Math.PI / 2;
+        farGround.position.set(cx, G0 - 0.4, cz);
+        group.add(farGround, ground);
+        junk.push(gtex, gmat, ground.geometry, farMat, farGround.geometry);
+
+        // ---- 먼 빌딩 숲 (안개 속으로 흐려진다)
+        for (var fx = -1850; fx <= 1850; fx += 72) {
+          for (var fz = -1850; fz <= 1850; fz += 72) {
+            var wx = cx + fx + (rnd() - 0.5) * 30, wz = cz + fz + (rnd() - 0.5) * 30, rr = Math.hypot(fx, fz);
+            if ((Math.abs(wx - cx) < GR + 20 && Math.abs(wz - cz) < GR + 20) || rr > 1900 || rnd() < 0.3) continue;
+            var fw = 18 + rnd() * 30, fd = 18 + rnd() * 30;
+            var fh = 20 + Math.pow(rnd(), 1.7) * 230 * (0.55 + 0.45 * Math.pow(Math.sin(Math.atan2(fz, fx) * 3 + 1.3), 2));
+            tower(wx - fw / 2, wx + fw / 2, wz - fd / 2, wz + fd / 2, fh, fh > 90 ? (rnd() < 0.6 ? 'glass' : 'office') : pick(['office', 'apt', 'low', 'office']));
+          }
+        }
+
+        // ---- 외벽 그림: 모양마다 한 칸(TILE) 그림과, 밤에 켜진 창만 그린 그림
+        function facade(k, lit) {
+          var c = document.createElement('canvas'), S = 256;
+          c.width = c.height = S;
+          var x = c.getContext('2d'), sd = { glass: 3, office: 5, apt: 7, low: 9 }[k] * (lit ? 13 : 1);
+          function r2() { sd = (sd * 16807) % 2147483647; return sd / 2147483647; }
+          x.fillStyle = lit ? '#000000' : { glass: '#4b5c6d', office: '#ddd7cd', apt: '#efebe3', low: '#e4dacd' }[k];
+          x.fillRect(0, 0, S, S);
+          function win(px, py, w, h, base) {
+            if (lit) {
+              if (r2() < 0.34) { x.fillStyle = r2() < 0.8 ? '#ffd38c' : '#cfe4ff'; x.fillRect(px, py, w, h); }
+              return;
+            }
+            var gr = x.createLinearGradient(0, py, 0, py + h);
+            gr.addColorStop(0, base[0]);
+            gr.addColorStop(1, base[1]);
+            x.fillStyle = gr;
+            x.fillRect(px, py, w, h);
+          }
+          var f, i;
+          if (k === 'glass') {        // 4칸 × 2층: 층 위쪽에 슬래브 띠, 칸 사이 멀리언
+            for (f = 0; f < 2; f++) for (i = 0; i < 4; i++) win(i * 64 + 2, f * 128 + 24, 60, 102, ['#a9c9dd', '#5e83a0']);
+          } else if (k === 'office') { // 4칸 × 2층: 층 가운데 띠창, 칸 사이 기둥
+            for (f = 0; f < 2; f++) for (i = 0; i < 4; i++) win(i * 64 + 7, f * 128 + 34, 50, 64, ['#7d93a4', '#4f6474']);
+          } else if (k === 'apt') {    // 2세대 × 2층: 큰 베란다 창과 난간
+            for (f = 0; f < 2; f++) for (i = 0; i < 2; i++) {
+              win(i * 128 + 10, f * 128 + 22, 108, 84, ['#b7c8d4', '#8ea4b4']);
+              if (!lit) { x.fillStyle = '#f7f5f0'; x.fillRect(i * 128 + 10, f * 128 + 70, 108, 5); }
+            }
+          } else {                     // 3창 × 2층
+            for (f = 0; f < 2; f++) for (i = 0; i < 3; i++) win(i * 85 + 14, f * 128 + 34, 56, 58, ['#8195a3', '#5b6d7b']);
+          }
+          var t = new T.CanvasTexture(c);
+          t.wrapS = t.wrapT = T.RepeatWrapping;
+          t.anisotropy = aniso;
+          t.encoding = T.sRGBEncoding;
+          junk.push(t);
+          return t;
+        }
+        ['glass', 'office', 'apt', 'low', 'roof'].forEach(function (k) {
+          var bk = B[k];
+          if (!bk || !bk.p.length) return;
+          var geo = new T.BufferGeometry();
+          geo.setAttribute('position', new T.Float32BufferAttribute(bk.p, 3));
+          geo.setAttribute('normal', new T.Float32BufferAttribute(bk.n, 3));
+          geo.setAttribute('uv', new T.Float32BufferAttribute(bk.u, 2));
+          geo.setAttribute('color', new T.Float32BufferAttribute(bk.c, 3));
+          var m = k === 'roof' ? new T.MeshLambertMaterial({ vertexColors: true })
+            : new T.MeshLambertMaterial({ map: facade(k, false), vertexColors: true, emissive: 0xffffff, emissiveMap: facade(k, true), emissiveIntensity: C.glow });
+          m.color.setScalar(C.light);
+          junk.push(geo, m);
+          var me = new T.Mesh(geo, m);
+          me.frustumCulled = false;
+          group.add(me);
+        });
+
+        // ---- 나무 (꼭대기 잎만 보이니 각진 공 하나씩)
+        var tn = trees.length / 4, tgeo = new T.IcosahedronGeometry(1, 0), tmat = new T.MeshLambertMaterial({ color: '#ffffff' });
+        tmat.color.setScalar(C.light * (C.glow > 0.5 ? 0.7 : 1));
+        var tm = new T.InstancedMesh(tgeo, tmat, tn), M4 = new T.Matrix4(), TC = new T.Color();
+        for (var ti = 0; ti < tn; ti++) {
+          var trr = trees[ti * 4 + 2];
+          M4.makeScale(trr, trr * 0.85, trr).setPosition(trees[ti * 4], trees[ti * 4 + 3] + 1.6 + trr * 0.8, trees[ti * 4 + 1]);
+          tm.setMatrixAt(ti, M4);
+          tm.setColorAt(ti, TC.setHSL(0.27 + rnd() * 0.08, 0.38 + rnd() * 0.15, 0.36 + rnd() * 0.12));
+        }
+        tm.frustumCulled = false;
+        group.add(tm);
+        junk.push(tgeo, tmat);
+
+        // ---- 달리는 차: 도로마다 양방향 두 차선. 밤에는 앞뒤 불빛만 보이게 밝은 점으로
+        var cars = [], CAR_COLORS = ['#f4f4f2', '#1d1f24', '#b9bec4', '#c8392f', '#2f5da8', '#e7e2d6', '#4d5560', '#2f7d5b'];
+        // 차는 [t0, t1] 구간을 돌고 돈다. 다리가 없는 도로는 강 앞에서 끊기므로 강 남쪽·북쪽을 따로 돈다
+        function addLane(axis, c, off, dir, t0, t1) {
+          if (t0 == null) { t0 = -GR; t1 = GR; }
+          for (var t = t0 + rnd() * 40; t < t1; t += 35 + rnd() * 70) {
+            var bus = rnd() < 0.06;
+            cars.push({ axis: axis, c: c + off, t: t, t0: t0, t1: t1, v: dir * (9 + rnd() * 6), len: bus ? 11 : 4.4, col: bus ? '#3a8f4f' : pick(CAR_COLORS), dir: dir });
+          }
+        }
+        rx.forEach(function (x) {
+          if (Math.abs(x - cx) >= 470) return;
+          if (!rv || bridge[x]) { addLane('z', x, RW * 0.19, 1); addLane('z', x, -RW * 0.19, -1); return; }
+          [[-GR, rv[0] - 2 - cz], [rv[1] + 2 - cz, GR]].forEach(function (r) { addLane('z', x, RW * 0.19, 1, r[0], r[1]); addLane('z', x, -RW * 0.19, -1, r[0], r[1]); });
+        });
+        rz.forEach(function (z) { if (Math.abs(z - cz) < 470) { addLane('x', z, -RW * 0.19, 1); addLane('x', z, RW * 0.19, -1); } });
+        var cgeo = new T.BoxGeometry(1, 1, 1), cmat = night ? new T.MeshBasicMaterial({ color: '#ffffff' }) : new T.MeshLambertMaterial({ color: '#ffffff' });
+        if (!night) cmat.color.setScalar(C.light);
+        var cm = new T.InstancedMesh(cgeo, cmat, cars.length);
+        cars.forEach(function (k, i) { cm.setColorAt(i, TC.set(night ? (k.dir > 0 ? '#fff1c8' : '#ff5b4a') : k.col)); });
+        cm.frustumCulled = false;
+        cm.instanceMatrix.setUsage(T.DynamicDrawUsage);
+        group.add(cm);
+        junk.push(cgeo, cmat);
+        function placeCars(dt) {
+          cars.forEach(function (k, i) {
+            k.t += k.v * dt;
+            if (k.t > k.t1) k.t -= k.t1 - k.t0; else if (k.t < k.t0) k.t += k.t1 - k.t0;
+            var w = night ? 1.2 : 1.9, h = night ? 0.5 : 1.45, l = night ? k.len * 0.5 : k.len;
+            if (k.axis === 'z') M4.makeScale(w, h, l).setPosition(k.c, G0 + h / 2 + 0.05, cz + k.t);
+            else M4.makeScale(l, h, w).setPosition(cx + k.t, G0 + h / 2 + 0.05, k.c);
+            cm.setMatrixAt(i, M4);
+          });
+          cm.instanceMatrix.needsUpdate = true;
+        }
+        placeCars(0);
+
+        return {
+          group: group,
+          fog: new T.Fog(C.fog, 320, 2000),
+          bg: C.fog,
+          tick: placeCars,
+          dispose: function () { junk.forEach(function (j) { j.dispose(); }); tm.dispose(); cm.dispose(); }
+        };
+      }
+      function shadeHex(hex, k) { return '#' + new T.Color(hex).multiplyScalar(k).getHexString(); }
+      function mixHex(a, b, t) { return '#' + new T.Color(a).lerp(new T.Color(b), t).getHexString(); }
+      function hexA(hex, a) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; }
 
       // ---------- 방 표시 (화이트보드, 노트북, 상태등, 이름표) ----------
       function updateRoom(R, r) {
@@ -2003,7 +2416,7 @@
       }
       function overview() {
         var f = fitBox(-0.3, W.width + 0.3, -0.3, W.depth + 0.3, 2.6, 0.9, 0.92, goal.az);
-        maxDist = f.dist * 1.6;
+        maxDist = f.dist * (city ? 2.8 : 1.6);   // 도시가 있으면 더 물러나 둘러볼 수 있게
         return f;
       }
       function roomFit(R) {
@@ -2125,6 +2538,12 @@
           b.setAttribute('aria-expanded', String(!lookPanel.hidden));
           syncLookPanel();
           return;
+        } else if (act === 'city') {
+          look.city = !look.city;
+          saveLook();
+          syncCityBtn();
+          if (look.city) attachCity(snap ? snap.hour : new Date().getHours()); else detachCity();
+          return;
         }
         userMoved = act !== 'home';
       });
@@ -2135,6 +2554,8 @@
         lookPanel.querySelector('.o3-ceo-name').textContent = look.ceo + '. ' + (CHAR_NAMES[look.ceo] || '');
       }
       function saveLook() { try { localStorage.setItem(LOOK_KEY, JSON.stringify(look)); } catch (_) {} }
+      function syncCityBtn() { tools.querySelector('[data-a="city"]').setAttribute('aria-pressed', String(!!look.city)); }
+      syncCityBtn();
       lookPanel.addEventListener('click', function (e) {
         var cb = e.target.closest('[data-ceo]');
         if (cb) {
@@ -2364,7 +2785,7 @@
         var latest = 0;
         list.forEach(function (a) {
           var b = a.p.bubble;
-          if (b && b.kind === 'say' && !a.worker && (!focus || a.room === focus) && b.t > latest) latest = b.t;
+          if (b && b.kind === 'say' && !b.old && !a.worker && (!focus || a.room === focus) && b.t > latest) latest = b.t;
         });
         var items = [];
         list.forEach(function (a) {
@@ -2406,7 +2827,7 @@
           // 방 안에서는 2D 처럼 말풍선 폭을 자리 간격에 맞춰 옆 사람 말풍선과 나란히 선다.
           var mw = Math.round((big ? clamp(SEAT * ppm - 8, 84, 360) : clamp(SEAT * ppm * 1.8, 96, 210)) / 4) * 4;
           var isLatest = b.kind === 'say' && b.t === latest;
-          var cls = 'o3-bub ' + b.kind + (big ? ' big' : '') + (below ? ' below' : '') + (isLatest ? ' latest' : '');
+          var cls = 'o3-bub ' + b.kind + (b.old ? ' old' : '') + (big ? ' big' : '') + (below ? ' below' : '') + (isLatest ? ' latest' : '');
           if (a.bubCls !== cls) { a.bub.className = cls; a.bubCls = cls; a.bubSize = null; }
           if (a.bubMw !== mw) { a.bub.style.setProperty('--mw', mw + 'px'); a.bubMw = mw; a.bubSize = null; }
           var y = top;
@@ -2415,16 +2836,17 @@
             var fp = screenOf(HV);
             y = fp ? fp.y + 8 : top;
           }
-          items.push({ a: a, x: sp.x, y: y, below: below, prio: (b.kind === 'alert' ? 4 : b.kind === 'say' ? (isLatest ? 3 : 2) : 1) + (b.t || 0) / 1e13 });
+          // 겹치면 알림 → 가장 최근 말 → 최근 말 → 하던 일 → 조금 지난 말 순서로 남긴다
+          items.push({ a: a, x: sp.x, y: y, below: below, prio: (b.kind === 'alert' ? 4 : b.kind === 'say' ? (isLatest ? 3 : b.old ? 0.5 : 2) : 1) + (b.t || 0) / 1e13 });
         });
         // 크기가 바뀐 말풍선만 다시 잰다 (한꺼번에 보이게 한 뒤 읽어서 레이아웃은 한 번만)
         items.forEach(function (it) { if (!it.a.bubSize) vis(it.a.bub, true); });
         items.forEach(function (it) { if (!it.a.bubSize) it.a.bubSize = { w: it.a.bub.offsetWidth, h: it.a.bub.offsetHeight }; });
         items.sort(function (p, q) { return q.prio - p.prio; });
         items.forEach(function (it) {
-          // 겹치면 위(아래)로 비켜 보고(방 안은 두 번, 멀리서는 한 번), 그래도 겹치면 감춘다.
+          // 겹치면 위(아래)로 두 번까지 비켜 보고, 그래도 겹치면 감춘다.
           var s = it.a.bubSize, r = { x: it.x - s.w / 2, y: it.below ? it.y : it.y - s.h, w: s.w, h: s.h };
-          for (var n = 0; n < (focus ? 2 : 1); n++) {
+          for (var n = 0; n < 2; n++) {
             var o = null;
             for (var i = 0; i < placed.length; i++) if (hit(placed[i], r)) { o = placed[i]; break; }
             if (!o) break;
@@ -2464,11 +2886,19 @@
         tickBreaks(Date.now());
         var sec = t / 1000;
         Object.keys(actors).forEach(function (id) { if (actors[id]) step(actors[id], dt, sec); });
+        if (city) city.tick(dt);
         Object.keys(W.rooms).forEach(function (n) {
           var R = W.rooms[n];
           R.lamp.visible = !R.blink || Math.floor(sec * 2.4) % 2 === 0;
           R.front.visible = focus !== n;
           R.plate.off = focus === n;
+        });
+        // 침대에 누가 누워 자면 볼록한 이불을 덮고, 아니면 개어 둔 이불
+        W.breaks.forEach(function (b) {
+          if (!b.cover) return;
+          var sa = b.by && actors[b.by];
+          var on = !!sa && !sa.moving && sa.pose === 'sleep' && Math.abs(sa.pos.x - b.x) + Math.abs(sa.pos.z - b.z) < 0.3;
+          if (b.cover.draped.visible !== on) { b.cover.draped.visible = on; b.cover.folded.visible = !on; }
         });
         var dirX = Math.sin(view.az), dirZ = Math.cos(view.az);
         W.cut.forEach(function (c) { c.obj.visible = dirX * c.nx + dirZ * c.nz <= 0.25; });

@@ -474,6 +474,9 @@
   .o3-bub.big b { display: block; font-size: .82em; color: #5b6470; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .o3-bub.big p { -webkit-line-clamp: 9; }
   .o3-bub.tool p { color: #5b6470; font-style: italic; }
+  .o3-bub.old { background: rgba(255, 254, 251, .86); color: #4b535d; box-shadow: 0 2px 6px rgba(0, 0, 0, .14); }
+  .o3-bub.old::after { border-top-color: rgba(255, 254, 251, .86); }
+  .o3-bub.old.below::after { border-top-color: transparent; border-bottom-color: rgba(255, 254, 251, .86); }
   .o3-bub.alert { background: #fff3f2; border-left-color: var(--approval); }
   .o3-bub.alert::after { border-top-color: #fff3f2; }
   .o3-bub.alert.below::after { border-top-color: transparent; border-bottom-color: #fff3f2; }
@@ -483,6 +486,7 @@
   .o3-tools button { border: 0; background: transparent; color: #fff; min-width: 32px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 15px; }
   .o3-tools button:hover { background: rgba(255, 255, 255, .15); }
   .o3-tools .wide { padding: 0 10px; font-size: 12.5px; font-weight: 700; }
+  .o3-tools button[aria-pressed="true"] { background: rgba(255, 255, 255, .2); }
   .o3-hint { position: absolute; left: 50%; bottom: 50px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 24px); padding: 3px 10px; border-radius: 8px; background: rgba(20, 24, 30, .6); color: #fff; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .8s; }
   .o3-hint.fade { opacity: 0; }
   .o3-back { z-index: 6; }
@@ -1483,8 +1487,11 @@
     if (s.state === 'approval') return { kind: 'alert', text: '승인 기다리는 중' + (s.waitingFor ? ' · ' + s.waitingFor : '') };
     if (s.state === 'question') return { kind: 'alert', text: '답변 기다리는 중' + (s.waitingFor ? ' · ' + s.waitingFor : '') };
     if (s.state === 'error') return { kind: 'alert', text: s.errorText || 'API 오류로 멈췄어요' };
-    if (sp.say && now - (sp.say.t2 || sp.say.t) < 20 * 60000) return { kind: 'say', text: plain(sp.say.text, 2000), t: sp.say.t2 || sp.say.t };
+    var sayT = sp.say ? sp.say.t2 || sp.say.t : 0;
+    if (sp.say && now - sayT < 20 * 60000) return { kind: 'say', text: plain(sp.say.text, 2000), t: sayT };
     if (s.state === 'working' && sp.tool && now - sp.tool.t < 3 * 60000) return { kind: 'tool', text: sp.tool.text };
+    // 조금 지난 말(3시간 안)도 흐리게 남겨서 회의실에 안 들어가도 무슨 얘기를 했는지 보이게
+    if (sp.say && now - sayT < 3 * 3600000) return { kind: 'say', old: true, text: plain(sp.say.text, 2000), t: sayT };
     return { kind: 'mini', text: { working: '…', done: '✓', idle: 'z' }[s.state] || '·' };
   }
 
