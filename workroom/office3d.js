@@ -46,7 +46,9 @@
     var SEAT_FWD = 0.12;             // 앉았을 때 엉덩이를 의자 가운데에서 탁자 쪽으로 당기는 거리 (손이 노트북에 닿게)
     var BREAK_AFTER = 10 * 60000;    // 일이 없는 채로(내 차례·대기) 이만큼 지나면 가끔 커피·탕비실로 쉬러 간다
     var WALK_SPEED = 0.95;           // 걷기 동작(Casual Walk)을 원래 빠르기로 틀 때 발이 안 미끄러지는 이동 속도 (m/s)
-    var MODEL_VER = 2;               // models/p*.js 를 바꾸면 올린다 (브라우저 캐시)
+    var WALK_V_REF = 0.65;           // 그때 걷기 동작의 발 속도 값(build-people.js 의 walkV). 다리가 짧으면 walkV 가 달라 동작 빠르기를 맞춘다
+    var MODEL_VER = 3;               // models/p*.js 를 바꾸면 올린다 (브라우저 캐시)
+    var TEX_MAX_LOD = 2;             // 사람 텍스처를 이보다 더 흐린 밉맵 단계로 보지 않는다 (조각 여백이 그 단계까지만 있어서, 넘으면 옆 조각 색이 섞여 선이 생긴다)
     // models/p<번호>.js 로 있는 캐릭터: 1~16 은 Meshy 로 만든 사무직, 17~24 는 빛식물 프로젝트 캐릭터(동작은 빌려 붙임)
     var PEOPLE_IDS = [];
     for (var pid = 1; pid <= 24; pid++) PEOPLE_IDS.push(pid);
@@ -273,7 +275,7 @@
       if (!skinned) return;
       var clips = {};
       gltf.animations.forEach(function (c) { clips[c.name] = c; });
-      var tpl = { i: i, scene: gltf.scene, clips: clips, material: skinned.material, sit: {}, scale: CHAR_SCALE[i] || 1 };
+      var tpl = { i: i, scene: gltf.scene, clips: clips, material: skinned.material, sit: {}, scale: CHAR_SCALE[i] || 1, walkV: e.walkV || 0 };
       // 앉는 동작마다 엉덩이 뼈가 어디 오는지 재 둔다 (의자 높이·위치에 맞추려고)
       Object.keys(clips).forEach(function (name) {
         var probe = SkeletonUtils.clone(gltf.scene), mixer = new T.AnimationMixer(probe);
@@ -289,6 +291,17 @@
       PEOPLE[i] = tpl;
       peopleListeners.forEach(function (fn) { fn(i); });
     }
+    // 사람 텍스처를 TEX_MAX_LOD 단계보다 흐리게 보지 않게 한다 (WebGL2 에서만, 아니면 원래대로)
+    var MAP_LINE = 'vec4 sampledDiffuseColor = texture2D( map, vUv );';
+    function clampMapLod(shader) {
+      if (T.ShaderChunk.map_fragment.indexOf(MAP_LINE) < 0) return;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', T.ShaderChunk.map_fragment.replace(MAP_LINE,
+        '#if __VERSION__ >= 300\n' +
+        '  vec2 wrT = vUv * vec2( textureSize( map, 0 ) ); vec2 wrX = dFdx( wrT ), wrY = dFdy( wrT );\n' +
+        '  vec4 sampledDiffuseColor = textureLod( map, vUv, clamp( 0.5 * log2( max( dot( wrX, wrX ), dot( wrY, wrY ) ) ), 0.0, ' + TEX_MAX_LOD.toFixed(1) + ' ) );\n' +
+        '#else\n  ' + MAP_LINE + '\n#endif'));
+    }
+    function clampLodKey() { return 'wr-lod' + TEX_MAX_LOD; }
     // 세션마다 캐릭터 하나를 정해 둔다 (같은 세션은 늘 같은 사람)
     function charOf(p) { return PEOPLE_IDS[hash(String(p.id) + ':char') % PEOPLE_IDS.length]; }
     function makeModel(p, tpl) {
@@ -298,6 +311,8 @@
       // 원래 색 그대로 쓴다 (사람마다 투명도를 따로 바꿀 수 있게 재질만 복사)
       var mat = tpl.material.clone();
       mat.roughness = 0.85;
+      mat.onBeforeCompile = clampMapLod;
+      mat.customProgramCacheKey = clampLodKey;
       inner.traverse(function (o) {
         if (o.isMesh) { o.material = mat; o.castShadow = true; o.frustumCulled = false; }
       });
@@ -1278,7 +1293,7 @@
           if (P.cur && P.actions[P.cur]) P.actions[P.cur].fadeOut(fade);
           P.cur = clip;
         }
-        if (clip === 'walk') P.actions.walk.timeScale = a.speed / WALK_SPEED;   // 발이 미끄러지지 않게 걸음 속도를 이동 속도에 맞춘다
+        if (clip === 'walk') P.actions.walk.timeScale = a.speed / WALK_SPEED * WALK_V_REF / (P.tpl.walkV || WALK_V_REF);   // 발이 미끄러지지 않게 걸음 속도를 이동 속도에 맞춘다
         P.mixer.update(dt);
         // 앉는 동작은 원래 사람이 원점에서 뒤·옆으로 비켜 앉게 만들어져 있어서 엉덩이를 의자 가운데로 옮긴다
         var s = SITTING[ps] && P.tpl.sit[clip], tx = 0, ty = 0, tz = 0;
