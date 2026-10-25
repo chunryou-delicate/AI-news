@@ -523,7 +523,7 @@ function handleEvent(input) {
   const tool = input.tool_name || '';
   switch (ev) {
     case 'SessionStart':
-      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; }
+      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; s.ask = ''; s.askText = ''; }
       if (input.source !== 'compact') next = 'idle';
       if (input.model) s.model = typeof input.model === 'string' ? input.model : (input.model.display_name || input.model.id || '');
       delete s.endedAt;
@@ -538,6 +538,8 @@ function handleEvent(input) {
       s.promptAt = startedAt;
       s.tool = '';
       s.waitingFor = '';
+      s.ask = '';
+      s.askText = '';
       break;
     case 'PreToolUse':
       if (tool === 'AskUserQuestion') { next = 'question'; s.waitingFor = clip(questionText(input.tool_input), 140); }
@@ -572,7 +574,12 @@ function handleEvent(input) {
       next = 'done';
       s.tool = '';
       s.waitingFor = '';
-      if (input.last_assistant_message) s.lastMessage = clip(input.last_assistant_message, 200);
+      if (input.last_assistant_message) {
+        s.lastMessage = clip(input.last_assistant_message, 200);
+        const ak = askKind(input.last_assistant_message);
+        s.ask = ak.kind;
+        s.askText = clip(ak.text, 160);
+      }
       break;
     case 'StopFailure':
       next = 'error';
@@ -626,6 +633,30 @@ function handleEvent(input) {
   } catch (e) {
     logError(e);
   }
+}
+
+// 차례를 마친 답변이 무엇을 기다리는지 끝 문장 몇 개로 가른다 (현황판.html 의 askKind 와 같은 규칙).
+//   approval: 이걸 해도 되는지 묻는다 ("진행할까요?", "말씀해 주시면 반영하겠습니다", "Shall I …?")
+//   question: 사용자가 고르거나 알려 줘야 한다 ("어느 쪽으로 할까요?", "날짜를 알려 주세요")
+//   report:   끝났다는 보고 (조건부 안내 "뜻이 다르면 알려 주세요" 도 여기)
+function askKind(text) {
+  const t = String(text || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>|]+/g, '').replace(/\s+/g, ' ').trim();
+  if (!t) return { kind: 'report', text: '' };
+  const parts = t.slice(-500).match(/[^.?!？！。]+[.?!？！。]*/g) || [t];
+  const last = parts.slice(-3).map((p) => p.trim()).filter(Boolean);
+  const CHOICE = /어느|어떤|어떻게|무엇|무슨|뭘|뭐로|뭐가|며칠|언제|얼마|몇 |중에|중 하나|아니면|which|what|when|how many|or /i;
+  const OFFER = /(할|볼|둘|놓을|드릴|올릴|보낼|넣을|지울|바꿀|고칠|만들|돌릴|맞출|옮길|붙일|뺄|켤|끌|살릴|합칠|나눌)까요|해도 (될|되|괜찮)|하면 (될|되)까요|괜찮을까요|좋을까요|shall i|should i|want me to|go ahead|proceed|ok to|okay to/i;
+  const GO_ON = /(주시면|주시는 대로|해 주시면|알려 주시면).{0,20}(진행|반영|적용|실행|시작|올리|보내|커밋|푸시|push|배포|고치|바꾸|만들)/;
+  const PERMIT = /승인|허락|허가|동의해/;
+  const PLEASE = /(알려|골라|정해|결정해|선택해|말씀해|답해|확인해|봐|보내|넣어|채워) ?(주세요|주십시오|주실래요|주시겠어요|줘)/;
+  const IFF = /[가-힣]면,? [^.]*(알려|말씀|보내|캡처)/;
+  for (let i = last.length - 1; i >= 0; i--) {
+    const s = last[i];
+    if (/[?？]\s*$|(까요|나요|가요|ㄹ래요|을래요|실래요|습니까|십니까)\s*$/.test(s)) return { kind: !CHOICE.test(s) && OFFER.test(s) ? 'approval' : 'question', text: s };
+    if (GO_ON.test(s) || (PERMIT.test(s) && /(주시면|주세요|해 주)/.test(s))) return { kind: 'approval', text: s };
+    if (PLEASE.test(s)) return IFF.test(s) ? { kind: 'report', text: '' } : { kind: 'question', text: s };
+  }
+  return { kind: 'report', text: '' };
 }
 
 function questionText(toolInput) {
@@ -942,6 +973,8 @@ function publicSession(s, state, quiet, reg, R) {
     endedAt: s.endedAt || 0,
     lastPrompt: s.lastPrompt || '',
     lastMessage: s.lastMessage || '',
+    ask: s.ask || '',
+    askText: s.askText || '',
     tool: s.tool || '',
     waitingFor: s.waitingFor || '',
     errorText: s.errorText || '',
