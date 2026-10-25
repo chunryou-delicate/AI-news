@@ -107,6 +107,8 @@ function pushSnapshot(cfg, interactive) {
   for (const f of logs) {
     const payload = readJsPayload(path.join(LOGS_DIR, f));
     if (!payload || payload.remote) continue;
+    // 하루 넘게 새 기록이 없는 방 로그는 올리지 않는다 (받는 쪽 pullOthers 와 같은 기준. 저장소에 옛 방이 계속 남지 않게).
+    if (Date.now() - (payload.generatedAt || 0) > 24 * 3600 * 1000) continue;
     const speech = readJson(path.join(LOGS_DIR, f.replace(/\.js$/, '.speech.json')), {});
     fs.writeFileSync(path.join(OUT_DIR, 'logs', f.replace(/\.js$/, '.json')), JSON.stringify({ log: payload, speech }));
   }

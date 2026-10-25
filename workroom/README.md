@@ -145,7 +145,8 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 - **다른 컴퓨터 세션:** 비공개 동기화 저장소로 보내고, 그 컴퓨터가 동기화할 때(보통 1~2분) 자기 Orca 로 넣은 뒤 받음 표시를 돌려줘요. 두 시간 안에 못 받으면 넣지 않아요. 보내는 컴퓨터는 `push`, 받는 컴퓨터는 `pull` 이 켜져 있어야 해요.
 - 창에 최근 보낸 것 세 개와 상태(들어감 · 전달 대기 · 못 넣음)가 보여요. 기록은 `send-log.json` 에만 남아요.
 - 현황판 열쇠가 있는 사람은 지시도 보낼 수 있으니 링크를 남에게 주지 마세요. 끄려면 `server.json` 에 `"send": false`, 다른 컴퓨터 지시를 받지 않으려면 `sync.json` 에 `"acceptSend": false`.
-- 명령줄로도 보낼 수 있어요: `node ~/.claude/workroom/send.js <세션ID> <지시>` (AI News 세션이 대신 전할 때)
+- 명령줄로도 보낼 수 있어요: `node ~/.claude/workroom/send.js <세션ID> <지시>` (AI News 세션이 대신 전할 때). `--json` 을 앞에 붙이면 결과를 JSON 한 줄로 줘요.
+- Orca 명령줄이 느린 컴퓨터(터미널 목록이 수십 초)도 되게, 그 세션 터미널 하나만 확인하고(`orca terminal show`) 서버는 send.js 를 따로 띄운 프로세스로 한 번에 하나씩 돌려요. 그래서 보내는 동안 현황판이 멈추지 않아요.
 
 ## 파일
 
