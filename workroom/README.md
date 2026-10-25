@@ -36,11 +36,28 @@ Claude Code 세션 여러 개를 사무실 그림 하나로 보는 현황판이�
 사람 모델은 `models/p<번호>.js`에 들어 있어요. GLB를 base64로 넣어 두어 `file://`에서도 읽혀요.
 
 - 1~16번은 Meshy로 만든 캐릭터예요. 1~6번은 동작을 직접 넣었고, 7~16번은 같은 뼈대라 1·2번 동작을 빌려 붙였어요.
+- 17~24번은 빛식물 프로젝트 캐릭터에 같은 동작을 빌려 붙인 거예요.
 - 화면에 나오는 캐릭터만 그때그때 불러와요. 그동안은 도형 사람으로 그려요.
 - 다시 만들 때는 `tools/build-people.js`를 써요.
   - 하는 일: 텍스처 여백 채우고 1024로 줄이기, 동작 15fps·16비트로 줄이기, 다른 캐릭터 동작 빌려 붙이기(엉덩이 높이 비율 맞춤).
   - 만든 파일은 `~/.claude/workroom/models/`에 두어요.
-  - 이 PC에는 다른 프로젝트(빛식물) 캐릭터로 만든 17~24번도 있어요. 이 저장소에는 올리지 않아요.
+
+## 다른 사람에게 공유하기
+
+현황판(뷰어) 코드만 이 저장소에 있어요. 대화 기록·회의록·열쇠 같은 데이터는 `.gitignore`로 빠져 있어서, 받은 사람 컴퓨터에는 그 사람의 Claude Code 세션만 보여요.
+
+받는 사람이 Claude Code에게 이렇게 부탁하면 돼요.
+
+```
+https://github.com/chunryou-delicate/AI-news 저장소의 workroom-dashboard 브랜치에 있는
+workroom 폴더(업무방 현황판)를 내 컴퓨터에 설치해 줘.
+git clone -b workroom-dashboard https://github.com/chunryou-delicate/AI-news.git 한 다음
+node workroom/deploy.js 를 실행하고, ~/.claude/workroom/현황판.html 을 브라우저로 열어 줘.
+```
+
+- Node.js와 git이 있어야 해요.
+- 방 목록은 처음에 그 사람 프로젝트 폴더 이름으로 자동으로 만들어져요. 이 저장소의 `rooms.json` 경로가 그 컴퓨터에 없으면 자동으로 그렇게 해요.
+- 다른 컴퓨터 동기화, 폰·외부 링크는 따로 켜야 하는 기능이에요. 아래 절을 보세요.
 
 ## 설치
 

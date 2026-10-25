@@ -38,6 +38,17 @@ if (fs.existsSync(MODELS)) {
 }
 
 const rooms = path.join(TARGET, 'rooms.json');
+// 기본 방 목록(rooms.json)은 만든 사람 PC의 폴더라서, 그 폴더가 하나도 없는 컴퓨터에서는 자동 방(프로젝트 폴더 이름)으로 한다.
+function defaultRoomsFit() {
+  try {
+    const def = JSON.parse(fs.readFileSync(path.join(__dirname, 'rooms.json'), 'utf8'));
+    return (def.rooms || []).some((r) => (r.paths || []).some((p) => fs.existsSync(p)));
+  } catch (_) { return false; }
+}
+if (!has('--auto-rooms') && !fs.existsSync(rooms) && !defaultRoomsFit()) {
+  argv.push('--auto-rooms');
+  console.log('기본 방 목록의 폴더가 이 컴퓨터에 없어서 프로젝트 폴더 이름으로 방을 만들어요.');
+}
 if (has('--auto-rooms')) {
   if (!fs.existsSync(rooms) || has('--rooms')) {
     fs.writeFileSync(rooms, JSON.stringify({ auto: true }, null, 2) + '\n');
