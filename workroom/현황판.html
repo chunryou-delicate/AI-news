@@ -375,6 +375,21 @@
   .m-meet::before, .m-meet::after { content: ""; flex: 1; height: 1px; background: var(--line); }
   .m-state { font-size: 12px; color: var(--muted); padding: 0 4px; }
   .m-tool { font: 11.5px ui-monospace, Consolas, monospace; color: var(--muted); padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 회의록 트리: 층 ▸ 방 ▸ 날짜 ▸ 그날 회의록 */
+  .min-tree { list-style: none; margin: 0; padding: 6px 8px 8px; }
+  .min-tree ul { list-style: none; margin: 0; padding: 0 0 0 14px; }
+  .t-row { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; color: var(--ink); text-align: left; padding: 5px 6px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 13px; }
+  .t-row:hover { background: var(--panel-2); }
+  .t-row::before { content: "▸"; flex: none; width: 10px; color: var(--muted); font-size: 11px; transition: transform .15s; }
+  .t-row[aria-expanded="true"]::before { transform: rotate(90deg); }
+  .t-m > .t-row { font-weight: 800; }
+  .t-r > .t-row { font-weight: 700; }
+  .t-row .t-sub { color: var(--muted); font-size: 11.5px; font-weight: 600; }
+  .t-row .n { margin-left: auto; color: var(--muted); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .t-day { margin: 2px 0 8px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); }
+  .t-day .min-tools { padding: 6px 8px; }
+  .t-day .min-list { max-height: min(56vh, 560px); }
+  .t-day .empty-note { padding: 10px; }
 
   /* 사람 */
   .person { cursor: pointer; outline: none; }
@@ -591,6 +606,10 @@
         <section class="card">
           <h2>일하는 중 <span class="n" id="busyN"></span></h2>
           <ul class="list" id="busy"></ul>
+        </section>
+        <section class="card">
+          <h2>회의록 <span class="n" id="treeN"></span></h2>
+          <ul class="min-tree" id="minTree"></ul>
         </section>
         <section class="card">
           <div class="legend" id="legend"></div>
@@ -1687,6 +1706,7 @@
 
   function enterRoom(name) {
     if (zoomRoom || !data) return;
+    openTreeForRoom(name);
     if (dim === '3d') {
       // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
       if (!roomsView().some(function (r) { return r.name === name; })) return;
@@ -1772,7 +1792,7 @@
   function renderSide() {
     document.getElementById('sideDefault').hidden = !!zoomRoom;
     document.getElementById('sideRoom').hidden = !zoomRoom;
-    if (!zoomRoom) return;
+    if (!zoomRoom) { loadOpenDays(); renderTree(); return; }
     document.getElementById('minRoom').textContent = zoomRoom;
     var mt = roomMeeting(zoomRoom);
     document.getElementById('minSub').textContent = mt
@@ -1817,10 +1837,11 @@
 
   function saveMinutes() {
     if (!logData || !zoomRoom) return;
-    var mt = roomMeeting(zoomRoom);
-    var items = mergeSayJs(logData.entries || []).filter(function (e) { return e.kind !== 'tool'; });
-    var day = logData.day || new Date().toISOString().slice(0, 10);
-    var lines = ['# 회의록 · ' + zoomRoom + ' · ' + day, ''];
+    downloadMinutes(zoomRoom, logData.day || new Date().toISOString().slice(0, 10), mergeSayJs(logData.entries || []), roomMeeting(zoomRoom), document.getElementById('saveMin'));
+  }
+  function downloadMinutes(room, day, all, mt, btn) {
+    var items = all.filter(function (e) { return e.kind !== 'tool'; });
+    var lines = ['# 회의록 · ' + room + ' · ' + day, ''];
     if (mt) lines.push('- 안건: ' + mt.agenda, '- 진행: ' + roundPhase(mt), '');
     items.forEach(function (e) {
       var time = hm(e.t);
@@ -1832,15 +1853,133 @@
     var blob = new Blob([lines.join('\n') + '\n'], { type: 'text/markdown;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = '회의록-' + zoomRoom.replace(/[\\/:*?"<>|]/g, '_') + '-' + day + '.md';
+    a.download = '회의록-' + room.replace(/[\\/:*?"<>|]/g, '_') + '-' + day + '.md';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
-    var btn = document.getElementById('saveMin');
-    btn.textContent = '저장했어요';
-    setTimeout(function () { btn.textContent = '회의록 저장'; }, 1600);
+    if (btn) {
+      btn.textContent = '저장했어요';
+      setTimeout(function () { btn.textContent = '회의록 저장'; }, 1600);
+    }
   }
+
+  // ---------- 회의록 트리 (방에 안 들어가도 오른쪽 패널에서) ----------
+  // 층(컴퓨터) ▸ 방 ▸ 날짜(최신 먼저) ▸ 그날 회의록. hook.js 가 만드는 minutes-index.js 를 15초마다 다시 읽고,
+  // 날짜를 펼치면 오늘은 실시간 기록(logs/<방키>.js), 지난 날짜는 minutes-js/<id>.js 를 읽는다 (file:// 에서도 script 로).
+  // 펼친 것은 이 브라우저에 기억하고, 방에 들어가면 그 방의 오늘 날짜를 펼쳐 둔다. 이 컴퓨터 층은 '@self'.
+  var TREE_KEY = 'workroom-min-tree';
+  var minIndex = null, treeOpen = {}, treeFilter = 'talk', dayData = {}, lastTreeKey = '', treeLoading = {};
+  try { treeOpen = JSON.parse(localStorage.getItem(TREE_KEY) || '{}') || {}; } catch (_) {}
+  function saveTreeOpen() { try { localStorage.setItem(TREE_KEY, JSON.stringify(treeOpen)); } catch (_) {} }
+  function mNode(m) { return 'M|' + (m.self ? '@self' : m.name); }
+  function rNode(m, r) { return 'R|' + (m.self ? '@self' : m.name) + '|' + r.name; }
+  function dNode(m, r, d) { return 'D|' + (m.self ? '@self' : m.name) + '|' + r.name + '|' + d; }
+  function loadScript(src, cb) {
+    var el = document.createElement('script');
+    el.src = src;
+    el.onload = function () { el.remove(); cb(true); };
+    el.onerror = function () { el.remove(); cb(false); };
+    document.head.appendChild(el);
+  }
+  function loadMinIndex() {
+    loadScript('minutes-index.js?t=' + Date.now(), function (ok) {
+      if (ok && window.__WORKROOM_MINUTES__) minIndex = window.__WORKROOM_MINUTES__;
+      loadOpenDays();
+      renderTree();
+    });
+  }
+  // 펼친 날짜의 회의록을 읽는다 (오늘은 실시간 기록이라 매번, 지난 날짜는 바뀌었을 때만)
+  function loadOpenDays() {
+    if (!minIndex) return;
+    minIndex.machines.forEach(function (m) {
+      m.rooms.forEach(function (r) {
+        r.days.forEach(function (d) {
+          if (!treeOpen[dNode(m, r, d.d)]) return;
+          var src = d.f ? 'minutes-js/' + d.f + '.js?v=' + Math.round(d.v) : r.live ? 'logs/' + r.live + '.js?t=' + Date.now() : '';
+          var id = d.f || 'live:' + r.live;
+          if (!src || treeLoading[id] || (d.f && dayData[id] && dayData[id].v === d.v)) return;
+          treeLoading[id] = true;
+          loadScript(src, function (ok) {
+            delete treeLoading[id];
+            var got = d.f ? (window.__WORKROOM_DAY__ || {})[d.f] : (window.__WORKROOM_LOG__ || {})[r.live];
+            dayData[id] = { v: d.v, at: Date.now(), entries: ok && got ? got.entries || [] : [], missing: !ok || !got };
+            if (d.f && window.__WORKROOM_DAY__) delete window.__WORKROOM_DAY__[d.f];   // 큰 날짜 파일은 한 벌만 들고 있게
+            renderTree();
+          });
+        });
+      });
+    });
+  }
+  function treeDayHtml(m, r, d) {
+    var id = d.f || 'live:' + r.live, got = dayData[id];
+    if (!got) return '<div class="t-day"><p class="empty-note">회의록을 불러오는 중…</p></div>';
+    // 실시간 기록에는 어제 끝부분도 붙어 있어서 그 날짜 것만
+    var items = mergeSayJs(got.entries).filter(function (e) {
+      return (treeFilter === 'all' || e.kind !== 'tool') && (d.f || dayOf(e.t2 || e.t) === d.d);
+    });
+    var mt = m.self ? roomMeeting(r.name) : null;
+    return '<div class="t-day"><div class="min-tools"><div class="seg t-seg" role="group" aria-label="회의록 보기">' +
+      '<button type="button" data-tf="talk"' + (treeFilter === 'talk' ? ' class="on"' : '') + '>대화</button><button type="button" data-tf="all"' + (treeFilter === 'all' ? ' class="on"' : '') + '>전체</button></div>' +
+      '<button type="button" class="save t-save" data-day="' + esc(dNode(m, r, d.d)) + '">회의록 저장</button></div>' +
+      '<ol class="min-list" data-list="' + esc(dNode(m, r, d.d)) + '">' + (items.length ? items.map(function (e) { return minuteHtml(e, mt); }).join('')
+        : '<li class="empty-note">' + (got.missing ? '이 날짜 회의록을 읽지 못했어요.' : '표시할 기록이 없어요.') + '</li>') + '</ol></div>';
+  }
+  function dayOf(t) {
+    var x = new Date(t);
+    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+  }
+  function renderTree() {
+    var box = document.getElementById('minTree');
+    if (!box) return;
+    if (!minIndex) { box.innerHTML = '<li class="empty-note">회의록 목록을 불러오는 중… (현황판 업데이트 뒤 처음이면 잠시 걸려요)</li>'; return; }
+    var key = JSON.stringify([minIndex.generatedAt, treeOpen, treeFilter, Object.keys(expanded), Object.keys(dayData).map(function (k) { return k + dayData[k].at; })]);
+    if (key === lastTreeKey) return;
+    lastTreeKey = key;
+    // 다시 그려도 펼친 회의록의 스크롤 자리를 지킨다
+    var scroll = {};
+    box.querySelectorAll('.min-list[data-list]').forEach(function (ol) { scroll[ol.getAttribute('data-list')] = [ol.scrollTop, ol.scrollHeight - ol.scrollTop - ol.clientHeight < 60]; });
+    var today = minIndex.today, rooms = 0;
+    box.innerHTML = minIndex.machines.map(function (m) {
+      rooms += m.rooms.length;
+      var mo = !!treeOpen[mNode(m)];
+      return '<li class="t-m"><button type="button" class="t-row" data-node="' + esc(mNode(m)) + '" aria-expanded="' + mo + '">' + esc(m.name) +
+        (m.self ? ' <span class="t-sub">이 컴퓨터</span>' : '') + '<span class="n">방 ' + m.rooms.length + '</span></button>' +
+        (mo ? '<ul>' + m.rooms.map(function (r) {
+          var ro = !!treeOpen[rNode(m, r)];
+          return '<li class="t-r"><button type="button" class="t-row" data-node="' + esc(rNode(m, r)) + '" aria-expanded="' + ro + '">' + esc(r.name) +
+            '<span class="n">' + esc(r.days[0].d === today ? '오늘' : r.days[0].d.slice(5)) + ' · ' + r.days.length + '일</span></button>' +
+            (ro ? '<ul>' + r.days.map(function (d) {
+              var dn = dNode(m, r, d.d), dO = !!treeOpen[dn];
+              return '<li class="t-d"><button type="button" class="t-row" data-node="' + esc(dn) + '" aria-expanded="' + dO + '">' + esc(d.d) +
+                (d.d === today ? ' <span class="t-sub">오늘</span>' : '') + '</button>' + (dO ? treeDayHtml(m, r, d) : '') + '</li>';
+            }).join('') + '</ul>' : '') + '</li>';
+        }).join('') + '</ul>' : '') + '</li>';
+    }).join('') || '<li class="empty-note">아직 회의록이 없어요.</li>';
+    document.getElementById('treeN').textContent = minIndex.machines.length > 1 ? minIndex.machines.length + '층 · 방 ' + rooms : '방 ' + rooms;
+    box.querySelectorAll('.min-list[data-list]').forEach(function (ol) {
+      var s = scroll[ol.getAttribute('data-list')];
+      ol.scrollTop = !s || s[1] ? ol.scrollHeight : s[0];
+    });
+  }
+  function treeFind(node) {
+    var out = null;
+    (minIndex ? minIndex.machines : []).forEach(function (m) {
+      m.rooms.forEach(function (r) { r.days.forEach(function (d) { if (dNode(m, r, d.d) === node) out = { m: m, r: r, d: d }; }); });
+    });
+    return out;
+  }
+  // 방에 들어가면 트리에서 그 층·방·오늘을 펼쳐 둔다
+  function openTreeForRoom(name) {
+    var room = (data && data.rooms || []).filter(function (r) { return r.name === name; })[0];
+    var m = room && room.machine ? room.machine : '@self', rn = room && room.machine ? room.label || name : name;
+    var today = minIndex ? minIndex.today : dayOf(Date.now());
+    treeOpen['M|' + m] = treeOpen['R|' + m + '|' + rn] = treeOpen['D|' + m + '|' + rn + '|' + today] = true;
+    saveTreeOpen();
+    lastTreeKey = '';
+  }
+  loadMinIndex();
+  setInterval(loadMinIndex, 15000);
 
   function agoHtml(t, now) {
     return (ageClass(t, now) === 'stale' ? '<span class="stale-tag">방치</span>' : '') + '<span class="ago">' + ago(t, now) + ' 전</span>';
@@ -2110,6 +2249,27 @@
     if (e.target.id === 'scrim') { closeSheet(); return; }
     var chip = e.target.closest('.chip[data-cat]');
     if (chip) { var cc = chip.getAttribute('data-cat'); todoFilter = todoFilter === cc ? '' : cc; render(); return; }
+    // 회의록 트리: 펼치기·접기, 대화/전체, 그 날짜 저장
+    var tr = e.target.closest('.t-row[data-node]');
+    if (tr) {
+      var nd = tr.getAttribute('data-node');
+      if (treeOpen[nd]) delete treeOpen[nd]; else treeOpen[nd] = true;
+      saveTreeOpen();
+      loadOpenDays();
+      renderTree();
+      return;
+    }
+    var tf = e.target.closest('.t-seg button[data-tf]');
+    if (tf) { treeFilter = tf.getAttribute('data-tf'); renderTree(); return; }
+    var ts = e.target.closest('.t-save');
+    if (ts) {
+      var fd = treeFind(ts.getAttribute('data-day')), got = fd && dayData[fd.d.f || 'live:' + fd.r.live];
+      if (got) {
+        var dayItems = mergeSayJs(got.entries).filter(function (x) { return fd.d.f || dayOf(x.t2 || x.t) === fd.d.d; });
+        downloadMinutes((fd.m.self ? '' : fd.m.name + ' · ') + fd.r.name, fd.d.d, dayItems, fd.m.self ? roomMeeting(fd.r.name) : null, ts);
+      }
+      return;
+    }
     var db = e.target.closest('#dimSeg button');
     if (db) { setDim(db.getAttribute('data-dim')); return; }
     if (e.target.closest('.sheet')) return;
@@ -2122,11 +2282,11 @@
     var cell = e.target.closest('.room-cell');
     if (cell && !zoomRoom) { if (cell.getAttribute('data-room')) enterRoom(cell.getAttribute('data-room')); return; }
     var more = e.target.closest('.m-more');
-    if (more) { var k = more.getAttribute('data-k'); if (expanded[k]) delete expanded[k]; else expanded[k] = true; renderMinutes(true); return; }
+    if (more) { var k = more.getAttribute('data-k'); if (expanded[k]) delete expanded[k]; else expanded[k] = true; renderMinutes(true); renderTree(); return; }
     var seg = e.target.closest('.seg button');
     if (seg) {
       minFilter = seg.getAttribute('data-filter');
-      document.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b === seg); });
+      document.querySelectorAll('#sideRoom .seg button').forEach(function (b) { b.classList.toggle('on', b === seg); });
       renderMinutes(true);
       return;
     }

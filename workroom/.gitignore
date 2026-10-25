@@ -32,6 +32,9 @@ tunnel.pid
 tunnel.log
 tunnel-hidden.vbs
 link-repo/
+# 회의록 트리 (hook.js 가 만드는 목록과 날짜별 회의록)
+minutes-index.js
+minutes-js/
 # 지시 보내기 (send.js): 보낼 것·보낸 기록·받은 기록
 outbox/
 send-log.json

@@ -259,6 +259,7 @@ function writeRoomLog(roomName) {
     `(window.__WORKROOM_LOG__ = window.__WORKROOM_LOG__ || {})[${JSON.stringify(key)}] = ${JSON.stringify(payload)};\n`);
   writeAtomic(path.join(LOGS_DIR, `${key}.speech.json`), JSON.stringify(latestSpeech(payload.entries)));
   writeSpeechJs();
+  maybeRebuildMinutesTree();
 }
 
 const KIND_LABEL = { order: '지시', report: '보고', msg: '메시지', ask: '요청', state: '상태', dispatch: '투입' };
@@ -460,6 +461,124 @@ function diffMeetings(meetings) {
 }
 
 // 30일 넘은 회의록 원본(jsonl)은 하루 한 번 지운다. 사람이 읽는 md 는 남긴다.
+// ---------- 회의록 트리 (현황판 오른쪽 패널: 층 ▸ 방 ▸ 날짜) ----------
+// 목록은 minutes-index.js, 지난 날짜 회의록은 minutes-js/<id>.js 로 만든다 (file:// 에서도 script 로 읽히게).
+// - 이 컴퓨터: minutes/<방>/<날짜>.jsonl (30일 넘어 지워졌으면 같은 날짜 .md)
+// - 다른 컴퓨터: 동기화(sync.js)가 회의록 보관 때 받아 두는 비공개 저장소 main 사본 archive-repo/minutes/<컴퓨터>/<방>/<날짜>.md
+//   (각 컴퓨터가 10분마다 올리는 것이라 날짜별로 다 있다. 동기화 스냅숏은 오늘 것만이라 지난 날짜는 이쪽을 쓴다)
+// - 오늘 것은 현황판이 실시간 기록 logs/<방키>.js 를 쓴다 (live). 다른 컴퓨터 오늘 것도 동기화로 받은 logs 가 있으면 그것.
+const ARCH_MIN_DIR = path.join(ROOT, 'archive-repo', 'minutes');
+const DAYS_DIR = path.join(ROOT, 'minutes-js');
+const MIN_INDEX = path.join(ROOT, 'minutes-index.js');
+
+// sync.js 의 machineKey 와 같다
+function machineKey(name) {
+  return roomKey('machine:' + name).slice(1);
+}
+
+// writeMinutesMd 가 쓴 md 를 다시 회의록 항목으로 읽는다 ("- 14:05 **누구 → 누구** _(지시)_: 내용", 이어지는 줄은 두 칸 들여쓰기)
+function parseMinutesMd(md, day) {
+  const [y, mo, d] = day.split('-').map(Number);
+  const labelKind = {};
+  for (const k of Object.keys(KIND_LABEL)) labelKind[KIND_LABEL[k]] = k;
+  const at = (h, m) => new Date(y, mo - 1, d, Number(h), Number(m)).getTime();
+  const out = [];
+  let cur = null;
+  for (const line of String(md).split(/\r?\n/)) {
+    let m = line.match(/^- (\d\d):(\d\d) \*\*(.+?)\*\*(?: _\((.+?)\)_)?: ?(.*)$/);
+    if (m) {
+      const who = m[3].split(' → ');
+      cur = { t: at(m[1], m[2]), mid: 'md' + out.length, kind: labelKind[m[4]] || 'say', who: who[0], to: who[1] || '', text: m[5] };
+      out.push(cur);
+      continue;
+    }
+    m = line.match(/^### (\d\d):(\d\d) · (.*)$/);
+    if (m) { cur = null; out.push({ t: at(m[1], m[2]), mid: 'md' + out.length, kind: 'meeting', text: m[3] }); continue; }
+    if (cur && line.startsWith('  ')) cur.text += '\n' + line.slice(2);
+  }
+  return out;
+}
+
+function writeDayFile(id, meta, entries) {
+  writeAtomic(path.join(DAYS_DIR, `${id}.js`),
+    `(window.__WORKROOM_DAY__ = window.__WORKROOM_DAY__ || {})[${JSON.stringify(id)}] = ${JSON.stringify(Object.assign({ id }, meta, { entries }))};\n`);
+}
+function mtimeOf(file) {
+  try { return fs.statSync(file).mtimeMs; } catch (_) { return 0; }
+}
+
+// 방 폴더 하나의 날짜들: 날짜 → 원본 파일. 지난 날짜는 day 파일이 원본보다 오래됐으면 다시 만든다.
+function scanRoomDays(dir, mk, room, today, keep, local, live) {
+  const byDay = {};
+  let files = [];
+  try { files = fs.readdirSync(dir); } catch (_) { return []; }
+  for (const f of files) {
+    const m = f.match(/^(\d{4}-\d\d-\d\d)\.(jsonl|md)$/);
+    if (!m) continue;
+    const prev = byDay[m[1]];
+    if (!prev || m[2] === 'jsonl') byDay[m[1]] = { src: path.join(dir, f), kind: m[2] };   // 이 컴퓨터는 jsonl 이 있으면 그것
+  }
+  const days = [];
+  for (const day of Object.keys(byDay).sort().reverse()) {
+    const src = byDay[day], v = mtimeOf(src.src);
+    // 오늘은 실시간 기록을 쓰므로 만들지 않는다 (실시간 기록이 없는 다른 컴퓨터 방은 md 로)
+    if (day === today && (local || live)) { days.push({ d: day, f: '', v }); continue; }
+    const id = `${mk}-${roomKey(room)}-${day}`;
+    keep.add(id);
+    const out = path.join(DAYS_DIR, `${id}.js`);
+    if (mtimeOf(out) < v) {
+      try {
+        let entries;
+        if (src.kind === 'md') entries = parseMinutesMd(fs.readFileSync(src.src, 'utf8'), day);
+        else {
+          const tools = readTailEntries(path.join(dir, `${day}.tools.jsonl`), 8 * 1024 * 1024, 1500);
+          entries = mergeSay(readTailEntries(src.src, 32 * 1024 * 1024, 6000)).concat(tools).sort((a, b) => a.t - b.t);
+        }
+        writeDayFile(id, { room, day }, entries);
+      } catch (e) { logError(e); continue; }
+    }
+    days.push({ d: day, f: id, v });
+  }
+  return days;
+}
+
+function rebuildMinutesTree() {
+  const today = dayStr(Date.now());
+  const cfg = readJson(SYNC_FILE, null) || {};
+  const selfName = cfg.machine || '';
+  const keep = new Set();
+  fs.mkdirSync(DAYS_DIR, { recursive: true });
+  const roomsOf = (base, mk, liveName) => {
+    let dirs = [];
+    try { dirs = fs.readdirSync(base).filter((d) => !d.startsWith('.') && fs.statSync(path.join(base, d)).isDirectory()); } catch (_) { return []; }
+    return dirs.map((room) => {
+      const key = roomKey(liveName(room));
+      const live = fs.existsSync(path.join(LOGS_DIR, `${key}.js`)) ? key : '';
+      return { name: room, live, days: scanRoomDays(path.join(base, room), mk, room, today, keep, mk === 'self', live) };
+    }).filter((r) => r.days.length).sort((a, b) => (b.days[0].d > a.days[0].d ? 1 : b.days[0].d < a.days[0].d ? -1 : a.name.localeCompare(b.name)));
+  };
+  const machines = [{ name: selfName || '이 컴퓨터', self: true, rooms: roomsOf(MINUTES_DIR, 'self', (r) => r) }];
+  let others = [];
+  try { others = fs.readdirSync(ARCH_MIN_DIR); } catch (_) {}
+  const own = safeName(selfName || os.hostname());
+  for (const m of others.sort()) {
+    if (m === own) continue;
+    const rooms = roomsOf(path.join(ARCH_MIN_DIR, m), machineKey(m), (r) => `${m} · ${r}`);
+    if (rooms.length) machines.push({ name: m, self: false, rooms });
+  }
+  // 지금 목록에 없는 날짜 파일은 지운다
+  try { for (const f of fs.readdirSync(DAYS_DIR)) if (f.endsWith('.js') && !keep.has(f.slice(0, -3))) fs.unlinkSync(path.join(DAYS_DIR, f)); } catch (_) {}
+  writeAtomic(MIN_INDEX, `window.__WORKROOM_MINUTES__ = ${JSON.stringify({ generatedAt: Date.now(), today, machines })};\n`);
+}
+// 훅 이벤트 때는 1분에 한 번만 (날짜가 바뀌면 바로)
+function maybeRebuildMinutesTree() {
+  try {
+    const head = fs.existsSync(MIN_INDEX) ? fs.readFileSync(MIN_INDEX, 'utf8').slice(0, 200) : '';
+    if (head.includes(`"today":"${dayStr(Date.now())}"`) && Date.now() - mtimeOf(MIN_INDEX) < MIN) return;
+    rebuildMinutesTree();
+  } catch (e) { logError(e); }
+}
+
 function cleanupMinutes() {
   const marker = path.join(MINUTES_DIR, `.cleaned-${dayStr(Date.now())}`);
   if (fs.existsSync(marker)) return;
@@ -1010,6 +1129,7 @@ function main() {
       if (fs.existsSync(path.join(MINUTES_DIR, d, `${day}.jsonl`))) { writeRoomLog(d); writeMinutesMd(d, day); }
     }
     writeSpeechJs();
+    try { rebuildMinutesTree(); } catch (e) { logError(e); }
     return;
   }
   let raw = '';
