@@ -28,8 +28,10 @@ function isOurs(group) {
   return group && Array.isArray(group.hooks) && group.hooks.some((h) => Array.isArray(h.args) && h.args.some((a) => String(a).replace(/\\/g, '/') === HOOK_SCRIPT));
 }
 
-const text = fs.readFileSync(SETTINGS, 'utf8');
-const settings = JSON.parse(text);
+// Claude Code 를 막 설치한 컴퓨터에는 settings.json 이 아직 없을 수 있다.
+const text = fs.existsSync(SETTINGS) ? fs.readFileSync(SETTINGS, 'utf8').replace(/^﻿/, '') : '{}';
+const settings = JSON.parse(text.trim() || '{}');
+fs.mkdirSync(path.dirname(SETTINGS), { recursive: true });
 settings.hooks = settings.hooks || {};
 
 for (const ev of Object.keys(settings.hooks)) {
