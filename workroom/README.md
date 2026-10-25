@@ -77,7 +77,7 @@ node workroom/deploy.js
 `node ~/.claude/workroom/server.js`를 띄우면 같은 와이파이의 폰에서 현황판을 볼 수 있어요. 처음 띄울 때 `server.json`에 열쇠(token)를 만들고, 폰에서 열 링크(`http://<PC 주소>:8790/?k=<열쇠>`)를 보여 줘요. `node server.js --link`로 링크를 다시 볼 수 있어요.
 
 - 현황판 화면과 그 화면이 읽는 파일만 내보내고, 열쇠가 맞아야 열려요. 한 번 열면 30일 동안 기억해요.
-- PC를 켤 때마다 자동으로 띄우려면 시작프로그램 폴더에 숨김 실행 스크립트를 두면 돼요.
+- PC를 켤 때마다 자동으로 띄우려면 `node workroom/deploy.js --server` 를 한 번 실행하세요 (Windows 시작프로그램 / 리눅스 systemd).
 
 ## 밖에서 폰으로 보기 (Cloudflare 임시 터널)
 
@@ -109,6 +109,17 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 ```sh
 node workroom/deploy.js --machine "집 컴퓨터" --sync <비공개 저장소 주소> --pull --schedule
 ```
+
+모든 컴퓨터가 주고받기 (컴퓨터마다 자기 현황판): 각 컴퓨터가 자기 세션은 직접 보여 주고, 다른 컴퓨터 현황은 비공개 저장소에서 받아 "<컴퓨터 이름> 층"으로 붙여요.
+
+```sh
+node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소 주소> --push --pull --server --local
+```
+
+- `--server`: 이 컴퓨터 현황판 서버(server.js)를 로그인할 때 자동으로 뜨게 등록하고 지금 다시 띄워요. Windows는 시작프로그램 폴더, 리눅스는 systemd 사용자 서비스(`workroom-server.service`)를 써요. 서버가 떠 있는 동안 1분마다 동기화하니까 리눅스에서도 `--schedule` 이 필요 없어요. 끄기: `--unserver`
+- `--local`: 서버가 이 컴퓨터에서만 열려요. 회사 노트북처럼 같은 망의 다른 기기에서 보이면 안 될 때 써요. 빼면 같은 와이파이의 폰에서도 열려요.
+- 여는 법: `node ~/.claude/workroom/server.js --open` (열쇠가 든 링크를 화면에 찍지 않고 브라우저로 바로 열어요. 한 번 열면 30일 동안 `http://localhost:8790` 으로 열려요.)
+- 컴퓨터 이름(`--machine`)은 처음 정한 이름을 그대로 쓰세요. 바꾸면 같은 컴퓨터가 새 층으로 하나 더 생겨요. 이름을 빼면 `sync.json` 의 전 이름을 써요.
 
 - **회의록 보관:** 동기화를 켠 컴퓨터는 자기 회의록(.md)을 비공개 저장소 main 브랜치의 `minutes/<컴퓨터>/<방>/<날짜>.md`로 커밋해요. 바뀐 게 있으면 10분마다(`sync.json`의 `archiveMinutes`), 회의가 끝나면 바로 올려요. 끄려면 `"archive": false`.
 - 끄기: `~/.claude/workroom/sync.json` 지우기, 작업 스케줄러는 `node workroom/deploy.js --no-hooks --unschedule`
