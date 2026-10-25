@@ -171,6 +171,9 @@ function pullOthers(cfg, interactive) {
       let item;
       try { item = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
       if (!item || !item.log) continue;
+      // 하루 넘게 새 기록이 없는 방 로그는 받지 않는다 (지난 회의록은 회의록 트리가 보관 사본으로 보여 준다).
+      // 받지 않으면 아래에서 예전에 만든 이 방 파일도 지운다.
+      if (Date.now() - (item.log.generatedAt || 0) > 24 * 3600 * 1000) continue;
       // 이 컴퓨터 현황판에서는 "<컴퓨터 이름> · <방 이름>" 방으로 보여 준다.
       const room = `${meta.machine} · ${item.log.room}`;
       const newKey = roomKey(room);

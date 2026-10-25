@@ -229,11 +229,20 @@ function latestSpeech(entries) {
   return out;
 }
 
+// 방별 말 기록(logs/*.speech.json)을 세션마다 합친다. 한 세션이 방을 옮기면 옛 방에도 기록이 남아 있으니,
+// 파일 순서대로 덮어쓰지 말고 말(say)·도구(tool)마다 더 최근(t)인 것을 남긴다.
 function writeSpeechJs() {
   const bySid = {};
   let names = [];
   try { names = fs.readdirSync(LOGS_DIR).filter((f) => f.endsWith('.speech.json')); } catch (_) { return; }
-  for (const f of names) Object.assign(bySid, readJson(path.join(LOGS_DIR, f), {}));
+  for (const f of names) {
+    const part = readJson(path.join(LOGS_DIR, f), {});
+    for (const sid of Object.keys(part || {})) {
+      const p = part[sid] || {}, cur = bySid[sid] || (bySid[sid] = {});
+      if (p.say && (!cur.say || (p.say.t || 0) > (cur.say.t || 0))) cur.say = p.say;
+      if (p.tool && (!cur.tool || (p.tool.t || 0) > (cur.tool.t || 0))) cur.tool = p.tool;
+    }
+  }
   writeAtomic(path.join(ROOT, 'speech.js'), `window.__WORKROOM_SPEECH__ = ${JSON.stringify({ generatedAt: Date.now(), bySid })};\n`);
 }
 
