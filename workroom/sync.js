@@ -2,6 +2,8 @@
 // 업무방 현황판 동기화: 여러 컴퓨터의 현황판 기록을 비공개 git 저장소로 주고받는다.
 // - push: 이 컴퓨터의 상태·말·회의록 스냅숏을 저장소의 m/<컴퓨터키> 브랜치에 덮어쓴다 (커밋 1개만 유지).
 // - pull: 다른 컴퓨터 브랜치들을 받아 remote/<컴퓨터키>/ 에 풀고, 현황판이 읽는 logs/*.js 를 만든다.
+// - 지시 보내기(send.js): 다른 컴퓨터 세션에 보낼 지시는 send/<받을 컴퓨터 키>/ 로 올리고, 받은 컴퓨터는 Orca 로 넣은 뒤
+//   receipts/ 에 받음 표시를 올린다. 받지 않으려면 sync.json 에 "acceptSend": false.
 // 설정: sync.json  { "repo": "...git", "machine": "회사 노트북", "push": true, "pull": false, "intervalSec": 60 }
 // 사용법: node sync.js             지금 한 번 동기화
 //         node sync.js --defer     (훅이 부름) 마지막 동기화 후 intervalSec 이 지나면 한 번 동기화
@@ -25,6 +27,8 @@ const MINUTES_DIR = path.join(ROOT, 'minutes');
 const ARCH_DIR = path.join(ROOT, 'archive-repo');           // 회의록 보관용 (저장소 main 브랜치)
 const ARCHIVE_REQ = path.join(ROOT, 'archive.request');     // 회의가 끝나면 hook.js 가 만들어 바로 올리게 한다
 const ERROR_LOG = path.join(ROOT, 'error.log');
+const INBOX_DONE = path.join(ROOT, 'inbox-done.json');      // 다른 컴퓨터에서 받아 넣은 지시 (받음 표시용, 하루 보관)
+const sendMod = require('./send.js');
 const MIN = 60 * 1000;
 const args = process.argv.slice(2);
 
@@ -107,6 +111,16 @@ function pushSnapshot(cfg, interactive) {
     fs.writeFileSync(path.join(OUT_DIR, 'logs', f.replace(/\.js$/, '.json')), JSON.stringify({ log: payload, speech }));
   }
   fs.writeFileSync(path.join(OUT_DIR, 'state.json'), JSON.stringify(state));
+  // 다른 컴퓨터로 보낼 지시 (받음 표시가 올 때까지 매번 같이 올린다)와, 이 컴퓨터가 받아 넣은 지시의 받음 표시
+  for (const m of sendMod.pendingOutbox()) {
+    fs.mkdirSync(path.join(OUT_DIR, 'send', m.to), { recursive: true });
+    fs.writeFileSync(path.join(OUT_DIR, 'send', m.to, `${m.id}.json`), JSON.stringify(m));
+  }
+  const done = readJson(INBOX_DONE, {});
+  for (const id of Object.keys(done)) {
+    fs.mkdirSync(path.join(OUT_DIR, 'receipts'), { recursive: true });
+    fs.writeFileSync(path.join(OUT_DIR, 'receipts', `${id}.json`), JSON.stringify(Object.assign({ id }, done[id])));
+  }
   fs.writeFileSync(path.join(OUT_DIR, 'meta.json'), JSON.stringify({ machine: cfg.machine, key, host: os.hostname(), generatedAt: Date.now() }));
 
   git(OUT_DIR, ['add', '-A']);
@@ -169,6 +183,7 @@ function pullOthers(cfg, interactive) {
     for (const k of prevDerived) {
       if (!derived.includes(k)) for (const ext of ['.js', '.speech.json']) try { fs.unlinkSync(path.join(LOGS_DIR, k + ext)); } catch (_) {}
     }
+    receiveSends(cfg, own, ref, meta);
     writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta));
     writeAtomic(path.join(dir, 'state.json'), JSON.stringify(state));
     writeAtomic(path.join(dir, 'derived.json'), JSON.stringify(derived));
@@ -184,6 +199,35 @@ function pullOthers(cfg, interactive) {
     fs.rmSync(path.join(REMOTE_DIR, d), { recursive: true, force: true });
   }
   return pulled;
+}
+
+// 다른 컴퓨터 브랜치에서: 이 컴퓨터로 온 지시를 넣고(두 시간 안에 보낸 것만, 한 번씩), 이 컴퓨터가 보낸 지시의 받음 표시를 확인한다.
+function receiveSends(cfg, own, ref, meta) {
+  const list = (prefix) => {
+    try { return git(IN_DIR, ['ls-tree', '-r', '--name-only', ref, prefix]).split('\n').map((x) => x.trim()).filter((x) => x.endsWith('.json')); } catch (_) { return []; }
+  };
+  const done = readJson(INBOX_DONE, {});
+  let changed = false;
+  if (own) {
+    for (const f of list(`send/${own}/`)) {
+      let m;
+      try { m = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
+      if (!m || !m.id || done[m.id]) continue;
+      let r;
+      if (cfg.acceptSend === false) r = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
+      else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) r = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
+      else r = sendMod.deliverLocal(m.sid, m.text);
+      done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid };
+      changed = true;
+    }
+  }
+  for (const f of list('receipts/')) {
+    let rc;
+    try { rc = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
+    if (rc && rc.id) sendMod.applyReceipt(rc, meta.machine);
+  }
+  for (const id of Object.keys(done)) if (Date.now() - (done[id].at || 0) > 24 * 3600 * 1000) { delete done[id]; changed = true; }
+  if (changed) writeAtomic(INBOX_DONE, JSON.stringify(done));
 }
 
 // ---------- 회의록 보관 ----------

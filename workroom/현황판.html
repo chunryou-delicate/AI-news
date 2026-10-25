@@ -444,6 +444,21 @@
   .sheet dl { margin: 0; padding: 12px 16px 6px; display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; }
   .sheet dt { color: var(--muted); font-size: 12.5px; }
   .sheet dd { margin: 0; overflow-wrap: anywhere; }
+  .send-box { margin: 6px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+  .send-box label { display: block; font-size: 12.5px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .send-row { display: flex; gap: 8px; align-items: stretch; }
+  .send-row textarea { flex: 1; min-width: 0; resize: vertical; font: inherit; font-size: 13.5px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .send-row button { border: 0; background: var(--done); color: #fff; border-radius: 8px; padding: 0 14px; cursor: pointer; font-weight: 700; }
+  .send-row button:disabled { opacity: .5; cursor: default; }
+  .send-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); min-height: 1em; }
+  .send-note.err { color: var(--approval); font-weight: 600; }
+  .send-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+  .send-list li { display: flex; gap: 6px; min-width: 0; }
+  .send-list b { flex: none; font-weight: 700; }
+  .send-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .send-list .ok b { color: var(--working); }
+  .send-list .wait b { color: var(--question); }
+  .send-list .bad b { color: var(--approval); }
   .sheet .actions { display: flex; gap: 8px; padding: 10px 16px 16px; align-items: center; flex-wrap: wrap; }
   .sheet .actions input { flex: 1; min-width: 200px; font: 12.5px ui-monospace, Consolas, monospace; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
   .sheet .actions button { border: 0; background: var(--ink); color: var(--panel); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 600; }
@@ -605,6 +620,15 @@
   <div class="sheet">
     <header><h3 id="sheetTitle"></h3><button class="close" id="sheetClose" type="button">닫기</button></header>
     <dl id="sheetBody"></dl>
+    <form class="send-box" id="sendBox" hidden>
+      <label for="sendText">지시 보내기</label>
+      <div class="send-row">
+        <textarea id="sendText" rows="2" maxlength="1000" placeholder="이 세션 터미널에 보낼 말 (Enter 로 보내기)"></textarea>
+        <button type="submit" id="sendBtn">보내기</button>
+      </div>
+      <p class="send-note" id="sendNote"></p>
+      <ul class="send-list" id="sendList"></ul>
+    </form>
     <div class="actions">
       <input id="resumeCmd" readonly aria-label="이어서 열기 명령">
       <button id="copyBtn" type="button">명령 복사</button>
@@ -1852,7 +1876,8 @@
     var now = Date.now();
     document.getElementById('sheetTitle').textContent = titleOf(s);
     var rows = [
-      ['상태', '<span class="pill" style="background:' + st.color + '">' + st.label + '</span> ' + ago(s.stateSince, now) + ' 전부터'],
+      ['상태', '<span class="pill" style="background:' + (CAT[catOf(s)] || st).color + '">' + (CAT[catOf(s)] || st).label + '</span> ' + ago(s.stateSince, now) + ' 전부터'],
+      s.state === 'done' && s.askText ? ['묻는 것', esc(s.askText)] : null,
       roleOf[s.id] ? ['회의 역할', esc(roleOf[s.id])] : null,
       s.synthetic ? ['방', esc(s.room) + ' · 회의 상태 파일 기준 (' + esc(s.agent || '에이전트') + ')'] : ['방', esc(s.room) + (s.app === 'chat' ? ' · 채팅 UI' : ' · 터미널')],
       s.cwd ? ['폴더', esc(s.cwd)] : null,
@@ -1872,13 +1897,76 @@
   function openSheet(id) {
     openId = id;
     fillSheet(id);
+    openSendBox(id);
     document.getElementById('scrim').classList.add('open');
     document.getElementById('sheetClose').focus();
   }
   function closeSheet() {
     openId = null;
+    clearTimeout(sendPoll);
     document.getElementById('scrim').classList.remove('open');
   }
+
+  // ---------- 지시 보내기 ----------
+  // 세션 창에서 짧은 말을 그 세션 터미널에 넣는다 (server.js → send.js). 다른 컴퓨터 세션은 동기화로 1~2분 뒤 들어간다.
+  // 서버로 연 현황판에서만 된다 (파일로 열면 보낼 곳이 없다).
+  var sendPoll = 0;
+  var SEND_STATUS = { delivered: ['ok', '들어감'], queued: ['wait', '전달 대기'], failed: ['bad', '못 넣음'] };
+  function openSendBox(id) {
+    var s = byId[id], box = document.getElementById('sendBox');
+    var can = /^https?:$/.test(location.protocol) && s && !s.synthetic && s.state !== 'ended';
+    box.hidden = !can;
+    if (!can) return;
+    document.getElementById('sendText').value = '';
+    var note = document.getElementById('sendNote');
+    note.className = 'send-note';
+    note.textContent = s.machine ? s.machine + ' 컴퓨터 세션이라 동기화로 보내요 (1~2분 뒤 그 터미널에 들어가요).' : '이 컴퓨터 세션 터미널에 바로 입력하고 Enter 를 쳐요.';
+    loadSends(id);
+  }
+  function loadSends(id) {
+    clearTimeout(sendPoll);
+    fetch('__sends?sid=' + encodeURIComponent(id), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (openId !== id) return;
+      var list = (j.list || []).slice(-3).reverse();
+      document.getElementById('sendList').innerHTML = list.map(function (e) {
+        var st = SEND_STATUS[e.status] || SEND_STATUS.queued;
+        return '<li class="' + st[0] + '" title="' + esc(e.error || '') + '"><b>' + hm(e.at) + ' ' + st[1] + '</b><span>' + esc(e.error ? e.text + ' — ' + e.error : e.text) + '</span></li>';
+      }).join('');
+      // 다른 컴퓨터로 보낸 것이 아직 대기면 조금 뒤 다시 본다
+      if (list.some(function (e) { return e.status === 'queued'; })) sendPoll = setTimeout(function () { loadSends(id); }, 6000);
+    }, function () {});
+  }
+  document.getElementById('sendBox').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var id = openId, ta = document.getElementById('sendText'), text = ta.value.trim(), btn = document.getElementById('sendBtn'), note = document.getElementById('sendNote');
+    if (!id || !text) return;
+    btn.disabled = true;
+    note.className = 'send-note';
+    note.textContent = '보내는 중…';
+    fetch('__send', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify({ sid: id, text: text }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        btn.disabled = false;
+        if (j.ok) {
+          ta.value = '';
+          note.textContent = j.status === 'queued' ? j.toMachine + ' 로 보냈어요. 그 컴퓨터가 동기화할 때 터미널에 들어가요.' : '터미널에 넣었어요.';
+        } else {
+          note.className = 'send-note err';
+          note.textContent = '못 보냈어요: ' + (j.error || '알 수 없는 오류');
+        }
+        loadSends(id);
+      }, function () {
+        btn.disabled = false;
+        note.className = 'send-note err';
+        note.textContent = '서버에 닿지 않았어요.';
+      });
+  });
+  document.getElementById('sendText').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    var f = document.getElementById('sendBox');
+    if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+  });
 
   // ---------- 3D 사무실 ----------
   // 2D/3D 단추로 바꾼다. 처음 3D 를 켤 때 office3d.js 를 불러오고, 그 안에서 Three.js 와 사람 모델(models/)을 불러온다.

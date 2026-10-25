@@ -128,6 +128,16 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 - 끄기: `~/.claude/workroom/sync.json` 지우기, 작업 스케줄러는 `node workroom/deploy.js --no-hooks --unschedule`
 - 동기화 결과는 `~/.claude/workroom/sync-status.json`, 오류는 `error.log`에 남아요
 
+## 세션에 지시 보내기
+
+서버로 연 현황판에서 세션(확인할 일 항목이나 사람)을 누르면 창 아래에 **지시 보내기** 칸이 있어요. 적고 Enter 를 치면:
+
+- **이 컴퓨터 세션:** Orca 명령줄(`orca terminal send`)로 그 세션 터미널에 바로 입력하고 Enter 를 쳐요. 셸에 명령으로 들어가지 않게, Orca 가 에이전트(Claude 등)가 돌고 있다고 알려 주는 터미널에만 넣어요. 채팅 탭 세션은 아직 안 돼요.
+- **다른 컴퓨터 세션:** 비공개 동기화 저장소로 보내고, 그 컴퓨터가 동기화할 때(보통 1~2분) 자기 Orca 로 넣은 뒤 받음 표시를 돌려줘요. 두 시간 안에 못 받으면 넣지 않아요. 보내는 컴퓨터는 `push`, 받는 컴퓨터는 `pull` 이 켜져 있어야 해요.
+- 창에 최근 보낸 것 세 개와 상태(들어감 · 전달 대기 · 못 넣음)가 보여요. 기록은 `send-log.json` 에만 남아요.
+- 현황판 열쇠가 있는 사람은 지시도 보낼 수 있으니 링크를 남에게 주지 마세요. 끄려면 `server.json` 에 `"send": false`, 다른 컴퓨터 지시를 받지 않으려면 `sync.json` 에 `"acceptSend": false`.
+- 명령줄로도 보낼 수 있어요: `node ~/.claude/workroom/send.js <세션ID> <지시>` (AI News 세션이 대신 전할 때)
+
 ## 파일
 
 | 파일 | 하는 일 |
@@ -139,7 +149,8 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 | `models/p*.js` | 3D 사람 모델 (Meshy 캐릭터, base64 GLB) |
 | `tools/build-people.js` | Meshy·빛식물 GLB를 3D 화면용 `models/p*.js`로 줄이는 도구 (텍스처 다시 배치, 법선 이어 붙이기, 동작 옮겨 붙이기) |
 | `rooms.json` | 회의실(프로젝트 폴더) 목록 |
-| `server.js` | 같은 와이파이의 폰에서 보는 작은 웹 서버 (열쇠가 있어야 열림) |
+| `server.js` | 같은 와이파이의 폰에서 보는 작은 웹 서버 (열쇠가 있어야 열림). 지시 보내기 요청도 받음 |
+| `send.js` | 세션에 지시 넣기 (이 컴퓨터는 Orca 로 바로, 다른 컴퓨터는 동기화 저장소로) |
 | `tunnel.js` | 밖에서 보기용 Cloudflare 임시 터널을 띄우고, 바뀐 링크를 비공개 저장소 LINK.md 에 적음 |
 | `sync.js` | 다른 컴퓨터와 비공개 git 저장소로 기록 주고받기 (`sync.json` 설정) |
 | `deploy.js` | 이 폴더의 코드를 `~/.claude/workroom`에 복사하고 훅 설치. 동기화 설정과 작업 스케줄러 등록도 해요 |

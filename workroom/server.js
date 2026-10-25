@@ -7,6 +7,9 @@
 //         node server.js --open   이 컴퓨터 브라우저로 현황판을 연다 (링크를 화면에 찍지 않음)
 // host 를 "127.0.0.1" 로 두면 이 컴퓨터에서만 열린다 (회사 노트북처럼 같은 망의 다른 기기에 보이면 안 될 때).
 // 동기화(sync.json)를 켠 컴퓨터에서는 서버가 떠 있는 동안 다른 컴퓨터 현황을 계속 받아 온다 (keepSyncing).
+// 지시 보내기: 현황판 세션 창에서 보낸 말을 send.js 로 그 세션 터미널에 넣는다 (다른 컴퓨터 세션은 동기화로).
+//   열쇠가 맞고 X-Workroom: send 머리글이 붙은 POST 만 받는다 (다른 사이트가 몰래 보내지 못하게).
+//   server.json 에 "send": false 를 두면 끈다.
 
 const http = require('http');
 const fs = require('fs');
@@ -82,6 +85,43 @@ function sameToken(a, b) {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+// 지시 보내기 요청 본문 (작은 JSON 만)
+function readBody(req, max) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => { size += c.length; if (size > max) { reject(new Error('too big')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+function sendJson(res, headers, code, obj) {
+  res.writeHead(code, Object.assign({}, headers, { 'Content-Type': 'application/json; charset=utf-8' })).end(JSON.stringify(obj));
+}
+function handleSend(cfg, req, res, headers, pathname, u) {
+  if (cfg.send === false) { sendJson(res, headers, 403, { ok: false, error: '이 컴퓨터는 지시 보내기를 꺼 두었어요' }); return; }
+  const sendMod = require('./send.js');
+  if (pathname === '/__sends') {
+    const sid = u.searchParams.get('sid');
+    const list = sendMod.readLog().filter((e) => !sid || e.sid === sid).slice(-20).map((e) => ({
+      id: e.id, at: e.at, sid: e.sid, text: e.text, status: e.status, error: e.error || '', toMachine: e.toMachine || '', doneAt: e.doneAt || 0,
+    }));
+    sendJson(res, headers, 200, { ok: true, list });
+    return;
+  }
+  if (req.method !== 'POST' || req.headers['x-workroom'] !== 'send') { sendJson(res, headers, 400, { ok: false, error: '잘못된 요청' }); return; }
+  readBody(req, 8192).then((body) => {
+    let j;
+    try { j = JSON.parse(body); } catch (_) { sendJson(res, headers, 400, { ok: false, error: '잘못된 요청' }); return; }
+    const r = sendMod.send(String(j.sid || ''), String(j.text || ''));
+    // 다른 컴퓨터로 가는 것은 바로 동기화를 한 번 돌려 빨리 올린다
+    if (r.ok && r.status === 'queued') {
+      try { require('child_process').spawn(process.execPath, [path.join(ROOT, 'sync.js')], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (_) {}
+    }
+    sendJson(res, headers, r.ok ? 200 : 409, r);
+  }, () => sendJson(res, headers, 413, { ok: false, error: '너무 길어요' }));
+}
+
 function serve(cfg) {
   const server = http.createServer((req, res) => {
     let u;
@@ -104,6 +144,7 @@ function serve(cfg) {
       setTimeout(() => process.exit(0), 100);
       return;
     }
+    if (pathname === '/__send' || pathname === '/__sends') { handleSend(cfg, req, res, headers, pathname, u); return; }
     if (pathname === '/') {
       // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
       res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();

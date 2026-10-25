@@ -32,6 +32,10 @@ tunnel.pid
 tunnel.log
 tunnel-hidden.vbs
 link-repo/
+# 지시 보내기 (send.js): 보낼 것·보낸 기록·받은 기록
+outbox/
+send-log.json
+inbox-done.json
 # 회의록 보관 (sync.js)
 archive-repo/
 archive.request
