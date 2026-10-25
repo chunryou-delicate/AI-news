@@ -342,7 +342,7 @@
       renderer.setClearColor(PAL.bg);
       // 조명 설정 (테마, 밝기, 빛 색). 이 브라우저에 기억해 둔다.
       var LOOK_KEY = 'workroom-3d-look';
-      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1, city: !coarse };   // 도시 배경은 폰에서는 처음에 끈다
+      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1, city: !coarse, sky: 'auto' };   // 도시 배경은 폰에서는 처음에 끈다
       try { Object.assign(look, JSON.parse(localStorage.getItem(LOOK_KEY) || '{}')); } catch (_) {}
       if (!THEMES[look.theme]) look.theme = 'pastel';
       var aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -369,6 +369,8 @@
       lookPanel.hidden = true;
       lookPanel.innerHTML = '<div class="o3-look-row"><span>사무실</span><div class="o3-themes">' +
         Object.keys(THEMES).map(function (k) { return '<button type="button" data-theme="' + k + '">' + THEMES[k].name + '</button>'; }).join('') + '</div></div>' +
+        '<div class="o3-look-row"><span>바깥</span><div class="o3-themes">' +
+        [['auto', '시각대로'], ['day', '낮'], ['dusk', '저녁'], ['night', '밤']].map(function (k) { return '<button type="button" data-sky="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div></div>' +
         '<label class="o3-look-row"><span>밝기</span><input type="range" min="0.4" max="1.5" step="0.05" data-k="light"></label>' +
         '<label class="o3-look-row"><span>빛 색</span><input type="range" min="0" max="1" step="0.05" data-k="warmth"><em>차갑게 ↔ 따뜻하게</em></label>' +
         '<div class="o3-look-row"><span>대표</span><button type="button" class="o3-ceo-btn" data-ceo="-1" aria-label="이전 캐릭터">◀</button>' +
@@ -1443,6 +1445,8 @@
         night: { fog: '#141c33', road: '#1d2129', walk: '#373a42', lot: '#2c2f37', park: '#22322a', water: '#182640', lane: '#7b786d', mid: '#7b6a35', bridge: '#4a4a52', light: 0.34, glow: 1 }
       };
       var city = null;
+      // 도시 배경 시간대: 조명 판에서 고른 것, '시각대로'면 지금 시각
+      function skyNow(hour) { return CITY_SKY[look.sky] ? look.sky : skyKind(hour); }
       function attachCity(hour) {
         detachCity();
         if (!W) return;
@@ -1469,7 +1473,7 @@
       }
 
       function makeCity(hour) {
-        var C = CITY_SKY[skyKind(hour)], G0 = -CITY_FLOOR * FLOOR_H, night = skyKind(hour) === 'night';
+        var kind = skyNow(hour), C = CITY_SKY[kind], G0 = -CITY_FLOOR * FLOOR_H, night = kind === 'night';
         var bw = W.width, bd = W.depth, cx = bw / 2, cz = bd / 2, GR = 640;
         var group = new T.Group(), junk = [];
         var seed = 20251025;
@@ -1841,6 +1845,7 @@
         placeCars(0);
 
         return {
+          kind: kind,
           group: group,
           fog: new T.Fog(C.fog, 320, 2000),
           bg: C.fog,
@@ -2291,7 +2296,7 @@
       // ---------- 장면 받기 ----------
       function update(s) {
         snap = s;
-        var key = JSON.stringify([look.theme, skyKind(s.hour), colsFor(s.rooms.length), s.self || '', s.rooms.map(function (r) { return [r.name, r.k, r.kind, r.machine]; })]);
+        var key = JSON.stringify([look.theme, colsFor(s.rooms.length), s.self || '', s.rooms.map(function (r) { return [r.name, r.k, r.kind, r.machine]; })]);
         var relayout = false;
         if (key !== builtKey) {
           if (W) {
@@ -2303,6 +2308,8 @@
           relayout = !first;
           resize(true);
         }
+        // '시각대로'면 저녁·밤이 되면 도시만 다시 짓는다 (사무실은 그대로)
+        if (city && city.kind !== skyNow(s.hour)) attachCity(s.hour);
         var queue = [];
         s.rooms.forEach(function (r) {
           r.people.forEach(function (p) { if (!p.worker && (p.state === 'approval' || p.state === 'question')) queue.push(p); });
@@ -2550,6 +2557,7 @@
       // 조명 판: 테마를 바꾸면 사무실을 다시 짓고, 밝기·빛 색은 바로 바뀐다
       function syncLookPanel() {
         lookPanel.querySelectorAll('[data-theme]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-theme') === look.theme); });
+        lookPanel.querySelectorAll('[data-sky]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-sky') === (look.sky || 'auto')); });
         lookPanel.querySelectorAll('input[data-k]').forEach(function (inp) { inp.value = look[inp.getAttribute('data-k')]; });
         lookPanel.querySelector('.o3-ceo-name').textContent = look.ceo + '. ' + (CHAR_NAMES[look.ceo] || '');
       }
@@ -2566,6 +2574,15 @@
           syncLookPanel();
           var ca = actors[CEO_ID];
           if (ca) { ca.p = ceoPerson(); needPerson(look.ceo); upgrade(ca); if (ceoRing.parent !== ca.obj) ca.obj.add(ceoRing); }
+          return;
+        }
+        var sb = e.target.closest('[data-sky]');
+        if (sb) {
+          // 도시 배경 시간대: 시각대로 / 낮 / 저녁 / 밤 (사무실은 그대로, 도시만 다시 짓는다)
+          look.sky = sb.getAttribute('data-sky');
+          saveLook();
+          syncLookPanel();
+          if (city && snap) attachCity(snap.hour);
           return;
         }
         var b = e.target.closest('[data-theme]');
