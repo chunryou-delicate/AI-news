@@ -43,7 +43,10 @@
     var SLEEP_AFTER = 30 * 60000;    // 이만큼 넘게 쉬면 수면실에서 잔다
     var WALL_H = 2.3, LOW_H = 1.0, WALL_T = 0.1;
     var SEAT_HIP = 0.63;             // 앉았을 때 엉덩이 뼈 높이 (의자 윗면 0.49)
-    var SEAT_FWD = 0.12;             // 앉았을 때 엉덩이를 의자 가운데에서 탁자 쪽으로 당기는 거리 (손이 노트북에 닿게)
+    var SEAT_FWD = 0.12;             // 앉았을 때 엉덩이를 의자 가운데에서 탁자 쪽으로 당기는 거리 (소파 등)
+    // 책상 의자에서는 동작마다 다르게: 쉬며 앉아 있을 때(sit)는 무릎에 팔을 대고 푹 숙이는 순간이 있어서 조금 뒤로
+    // (머리가 책상·노트북에 박히지 않게), 타자 칠 때(type)는 몸이 꼿꼿하니 앞으로 당겨 손이 노트북 쪽에 닿게.
+    var SEAT_FWD_FOR = { sit: 0.02, talkSit: 0.04, type: 0.22 };
     var BREAK_AFTER = 10 * 60000;    // 일이 없는 채로(내 차례·대기) 이만큼 지나면 가끔 커피·탕비실로 쉬러 간다
     var WALK_SPEED = 0.95;           // 걷기 동작(Casual Walk)을 원래 빠르기로 틀 때 발이 안 미끄러지는 이동 속도 (m/s)
     var WALK_V_REF = 0.65;           // 그때 걷기 동작의 발 속도 값(build-people.js 의 walkV). 다리가 짧으면 walkV 가 달라 동작 빠르기를 맞춘다
@@ -506,7 +509,7 @@
         var k = r.k, w = roomWidth(k), tlen = k * SEAT + 0.3, tx0 = x0 + 1.1;
         var R = {
           name: r.name, kind: r.kind, k: k, x0: x0, z0: z0, w: w, x1: x0 + w, z1: z0 + ROOM_D, row: row,
-          xSide: x0 + w - 0.85, zBack: z0 + 0.72, zFar: z0 + 1.66, zTable: z0 + 2.55, zNear: z0 + 3.44, zFront: z0 + 4.5, zDoor: z0 + ROOM_D - 0.45,
+          xSide: x0 + w - 0.85, zBack: z0 + 0.72, zFar: z0 + 1.52, zTable: z0 + 2.55, zNear: z0 + 3.58, zFront: z0 + 4.5, zDoor: z0 + ROOM_D - 0.45,
           tx0: tx0, tlen: tlen, tcx: tx0 + tlen / 2, seatX: [], laptops: { far: [], near: [] }, boardKey: '', labelKey: ''
         };
         for (var i = 0; i < k; i++) R.seatX.push(tx0 + 0.15 + SEAT * (i + 0.5));
@@ -593,7 +596,7 @@
         }
         function laptop(x, z, dir) {   // dir: 쓰는 사람이 보는 쪽. 화면이 사람 쪽을 본다.
           var grp = new T.Group();
-          grp.position.set(x, 0.77, z);
+          grp.position.set(x, 0.72, z);
           if (dir < 0) grp.rotation.y = Math.PI;
           mesh(G.box, M.laptop, 0.34, 0.02, 0.24, 0, 0, 0, grp);
           var lid = new T.Group();
@@ -712,18 +715,18 @@
               box(0.06, 0.4, 0.6, M.tableEdge, R.tx0 + 0.4, 0.2, R.zTable);
               box(0.06, 0.4, 0.6, M.tableEdge, R.tx0 + R.tlen - 0.4, 0.2, R.zTable);
             } else {
-              box(R.tlen, 0.06, 1.1, M.table, R.tcx, 0.74, R.zTable);
-              box(R.tlen - 0.1, 0.04, 1.0, M.tableEdge, R.tcx, 0.7, R.zTable);
-              box(0.08, 0.68, 0.8, M.tableEdge, R.tx0 + 0.25, 0.34, R.zTable);
-              box(0.08, 0.68, 0.8, M.tableEdge, R.tx0 + R.tlen - 0.25, 0.34, R.zTable);
+              box(R.tlen, 0.06, 1.1, M.table, R.tcx, 0.69, R.zTable);   // 윗면 0.72
+              box(R.tlen - 0.1, 0.04, 1.0, M.tableEdge, R.tcx, 0.65, R.zTable);
+              box(0.08, 0.63, 0.8, M.tableEdge, R.tx0 + 0.25, 0.315, R.zTable);
+              box(0.08, 0.63, 0.8, M.tableEdge, R.tx0 + R.tlen - 0.25, 0.315, R.zTable);
             }
             R.seatX.forEach(function (x) {
               if (lounge) { armchair(x, R.zFar, 1); armchair(x, R.zNear, -1); }
               else {
                 chair(x, R.zFar, 1, seatMat);
                 chair(x, R.zNear, -1, seatMat);
-                R.laptops.far.push(laptop(x, R.zTable - 0.28, 1));
-                R.laptops.near.push(laptop(x, R.zTable + 0.28, -1));
+                R.laptops.far.push(laptop(x, R.zTable - 0.3, 1));
+                R.laptops.near.push(laptop(x, R.zTable + 0.3, -1));
               }
             });
             plant(x0 + 0.45, z1 - 0.45, 1);
@@ -843,19 +846,21 @@
         var ceoR = lowerRoom(xA, xB, '대표실', M.ceoFloor);
         var dx = xA + (xB - xA) * 0.48, dz = rz0 + 2.9;
         box(3.2, 0.008, 2.6, M.rug, dx, 0.016, dz + 0.1);
-        box(2.4, 0.07, 1.05, M.desk, dx, 0.76, dz);
-        box(2.3, 0.7, 0.05, M.desk, dx, 0.37, dz + 0.48);
-        box(0.06, 0.72, 1.0, M.desk, dx - 1.15, 0.36, dz);
-        box(0.06, 0.72, 1.0, M.desk, dx + 1.15, 0.36, dz);
-        box(0.7, 0.42, 0.04, M.dark, dx - 0.2, 1.08, dz - 0.25);
-        box(0.06, 0.2, 0.06, M.dark, dx - 0.2, 0.88, dz - 0.25);
-        box(0.05, 0.45, 0.05, M.metal, dx + 0.85, 0.99, dz - 0.2);
-        box(0.22, 0.12, 0.22, M.led, dx + 0.85, 1.25, dz - 0.2);
-        box(0.6, 0.1, 0.58, M.chair, dx, 0.47, dz - 0.85);
-        box(0.64, 1.05, 0.12, M.chair, dx, 1.05, dz - 1.17);
-        box(0.05, 0.4, 0.05, M.metal, dx, 0.22, dz - 0.85);
-        box(0.56, 0.04, 0.08, M.metal, dx, 0.04, dz - 0.85);
-        box(0.08, 0.04, 0.56, M.metal, dx, 0.04, dz - 0.85);
+        // 책상 윗면 0.745, 대표 의자는 책상 모서리에서 0.47 뒤 (방 책상과 같은 이유로 조금 낮추고 뒤로 뺐다)
+        var chairZ = dz - 0.99;
+        box(2.4, 0.07, 1.05, M.desk, dx, 0.71, dz);
+        box(2.3, 0.65, 0.05, M.desk, dx, 0.345, dz + 0.48);
+        box(0.06, 0.67, 1.0, M.desk, dx - 1.15, 0.335, dz);
+        box(0.06, 0.67, 1.0, M.desk, dx + 1.15, 0.335, dz);
+        box(0.7, 0.42, 0.04, M.dark, dx - 0.2, 1.03, dz - 0.25);
+        box(0.06, 0.2, 0.06, M.dark, dx - 0.2, 0.83, dz - 0.25);
+        box(0.05, 0.45, 0.05, M.metal, dx + 0.85, 0.94, dz - 0.2);
+        box(0.22, 0.12, 0.22, M.led, dx + 0.85, 1.2, dz - 0.2);
+        box(0.6, 0.1, 0.58, M.chair, dx, 0.47, chairZ);
+        box(0.64, 1.05, 0.12, M.chair, dx, 1.05, chairZ - 0.32);
+        box(0.05, 0.4, 0.05, M.metal, dx, 0.22, chairZ);
+        box(0.56, 0.04, 0.08, M.metal, dx, 0.04, chairZ);
+        box(0.08, 0.04, 0.56, M.metal, dx, 0.04, chairZ);
         var np = textCanvas(256, 72), nx = np.canvas.getContext('2d');
         nx.fillStyle = '#fffdf8';
         nx.fillRect(0, 0, 256, 72);
@@ -875,7 +880,7 @@
         plant(xB - 0.5, rz0 + 0.6, 1.2);
         plant(xA + 0.5, rz1 - 0.5, 1.1);
         W.desk = { x: dx, z: dz, room: ceoR };
-        W.ceoSeat = { key: 'ceo-seat', place: ceoR.place(rz0 + 0.75), x: dx, ax: dx, z: dz - 0.85, yaw: 0, pose: 'sit' };
+        W.ceoSeat = { key: 'ceo-seat', place: ceoR.place(rz0 + 0.75), x: dx, ax: dx, z: chairZ, yaw: 0, pose: 'sit' };
 
         // 휴게실: 커피 바, 마주 보는 소파 둘, 자판기, 동그란 탁자
         var loungeR = lowerRoom(xB, xC, '휴게실', M.lounge);
@@ -1298,7 +1303,7 @@
         // 앉는 동작은 원래 사람이 원점에서 뒤·옆으로 비켜 앉게 만들어져 있어서 엉덩이를 의자 가운데로 옮긴다
         var s = SITTING[ps] && P.tpl.sit[clip], tx = 0, ty = 0, tz = 0;
         if (s && clip === 'sleep') { tx = -s.x * P.tpl.scale; ty = BED_HIP - s.y * P.tpl.scale; tz = 0.05 - s.z * P.tpl.scale; }   // 침대 가운데에 눕힌다
-        else if (s) { tx = -s.x * P.tpl.scale; ty = P.tpl.seatHip - s.y * P.tpl.scale; tz = SEAT_FWD - s.z * P.tpl.scale; }
+        else if (s) { tx = -s.x * P.tpl.scale; ty = P.tpl.seatHip - s.y * P.tpl.scale; tz = (clip in SEAT_FWD_FOR ? SEAT_FWD_FOR[clip] : SEAT_FWD) - s.z * P.tpl.scale; }
         var k = a.snapPose ? 1 : Math.min(1, dt * 7);
         P.inner.position.x += (tx - P.inner.position.x) * k;
         P.inner.position.y += (ty - P.inner.position.y) * k;
