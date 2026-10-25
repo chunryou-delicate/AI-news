@@ -1,6 +1,6 @@
 'use strict';
 // 업무방 현황판을 같은 와이파이의 폰에서도 볼 수 있게 이 PC에서 띄우는 작은 웹 서버.
-// 현황판 화면과 그 화면이 읽는 파일(state.js, speech.js, logs/*.js)만 내보내고,
+// 현황판 화면과 그 화면이 읽는 파일(state.js, speech.js, logs/*.js, 3D 화면 office3d.js·models/*.js)만 내보내고,
 // 링크에 붙은 열쇠(k)가 맞아야 열린다. 처음 한 번 열면 30일 동안 쿠키로 기억한다.
 // 사용법: node server.js          (설정은 server.json: { "port": 8790, "token": "..." }, 없으면 만든다)
 //         node server.js --link   폰에서 열 링크만 보여 준다
@@ -14,7 +14,8 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const CFG_FILE = path.join(ROOT, 'server.json');
 const PAGE = '/현황판.html';
-const ALLOWED = /^\/(현황판\.html|state\.js|speech\.js|logs\/r[0-9a-f]+\.js)$/;
+const ALLOWED = /^\/(현황판\.html|office3d\.js|state\.js|speech\.js|logs\/r[0-9a-f]+\.js|models\/p\d+\.js)$/;
+const CACHED = /^\/models\//;   // 3D 사람 모델은 크고 잘 안 바뀌어서 폰이 기억해 두게 한다 (바뀌면 ?v= 를 올린다)
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
 function readJson(file, fallback) {
@@ -71,6 +72,7 @@ function serve(cfg) {
       return;
     }
     if (!ALLOWED.test(pathname)) { res.writeHead(404, headers).end(); return; }
+    if (CACHED.test(pathname)) headers['Cache-Control'] = 'private, max-age=604800';
     fs.readFile(path.join(ROOT, pathname), (err, body) => {
       if (err) { res.writeHead(404, headers).end(); return; }
       res.writeHead(200, Object.assign(headers, { 'Content-Type': TYPES[path.extname(pathname)] || 'application/octet-stream' })).end(body);

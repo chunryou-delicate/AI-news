@@ -35,3 +35,9 @@ link-repo/
 # 회의록 보관 (sync.js)
 archive-repo/
 archive.request
+# 3D 시험용 사본
+_test3d.html
+_cliptest.html
+# 빛식물 프로젝트 캐릭터로 만든 모델(17~24)은 다른 프로젝트 것이라 이 저장소에 올리지 않는다
+models/p1[7-9].js
+models/p2[0-4].js

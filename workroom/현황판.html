@@ -188,9 +188,25 @@
   .viewseg button { border: 0; background: transparent; padding: 5px 11px; cursor: pointer; font-size: 13px; color: var(--muted); }
   .viewseg button.on { background: var(--ink); color: var(--panel); font-weight: 700; }
 
-  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) var(--side-w, 320px); gap: 16px; align-items: start; }
   .layout > * { min-width: 0; }
   @media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  /* 화면 배치: 꽉 차게 / 패널 왼쪽·숨김 / 패널 폭 끌어서 조절 */
+  body.full .wrap { max-width: none; }
+  body.side-left .layout { grid-template-columns: var(--side-w, 320px) minmax(0, 1fr); }
+  body.side-left .layout > aside { order: -1; }
+  body.side-hide .layout { grid-template-columns: minmax(0, 1fr); }
+  body.side-hide .layout > aside { display: none; }
+  @media (max-width: 1100px) { body.side-left .layout { grid-template-columns: minmax(0, 1fr); } body.side-left .layout > aside { order: 0; } }
+  aside.side { position: relative; }
+  .side-grip { position: absolute; top: 0; bottom: 0; left: -12px; width: 10px; cursor: col-resize; border-radius: 6px; z-index: 2; }
+  .side-grip:hover, .side-grip.drag { background: color-mix(in srgb, var(--done) 30%, transparent); }
+  body.side-left .side-grip { left: auto; right: -12px; }
+  @media (max-width: 1100px) { .side-grip { display: none; } }
+  .layoutseg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+  .layoutseg button { border: 0; background: transparent; padding: 5px 10px; cursor: pointer; font-size: 13px; color: var(--muted); }
+  .layoutseg button.on { background: var(--ink); color: var(--panel); font-weight: 700; }
+  @media (max-width: 1100px) { .layoutseg .wide-only { display: none; } }
 
   /* 평면도 */
   .floorplan {
@@ -420,6 +436,72 @@
   .sheet .actions { display: flex; gap: 8px; padding: 10px 16px 16px; align-items: center; flex-wrap: wrap; }
   .sheet .actions input { flex: 1; min-width: 200px; font: 12.5px ui-monospace, Consolas, monospace; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
   .sheet .actions button { border: 0; background: var(--ink); color: var(--panel); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 600; }
+
+  /* 3D 사무실 (office3d.js) */
+  .office3d { position: relative; height: clamp(420px, calc(100vh - 150px), 1600px); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); background: var(--tile); touch-action: none; user-select: none; -webkit-user-select: none; }
+  @media (pointer: coarse) { .office3d { height: 64vh; } }
+  .office3d canvas { display: block; width: 100%; height: 100%; outline: none; cursor: grab; }
+  .office3d canvas:active { cursor: grabbing; }
+  .o3-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); }
+  .o3-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+  .o3-layer > * { position: absolute; left: 0; top: 0; will-change: transform; }
+  .o3-room { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 3px 9px; border-radius: 8px; background: rgba(255, 255, 255, .93); color: #1f2328; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
+  .o3-room em { font-style: normal; opacity: .5; }
+  .o3-room i { width: 8px; height: 8px; border-radius: 50%; }
+  .o3-room span { font-weight: 600; color: #5b6470; }
+  .o3-room.alert { box-shadow: 0 0 0 2px var(--approval), 0 2px 8px rgba(0, 0, 0, .18); animation: o3pulse 1.3s ease-in-out infinite; }
+  .o3-room.dim { opacity: .5; }
+  .o3-room.static { pointer-events: none; cursor: default; background: rgba(255, 255, 255, .82); color: #3a4350; }
+  .o3-room.compact { padding: 2px 7px; font-size: 11px; }
+  .o3-room.compact span { display: none; }
+  .o3-zone { font-size: 15px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); padding: 4px 12px; border-radius: 8px; box-shadow: var(--shadow); white-space: nowrap; }
+  .o3-zone b { font-weight: 800; }
+  .o3-zone span { margin-left: 8px; color: var(--muted); font-size: 12px; }
+  .o3-spot { font-size: 11px; font-weight: 700; color: #fff; background: rgba(20, 24, 30, .6); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+  .o3-tag { pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 2px 5px; border-radius: 999px; background: rgba(255, 255, 255, .94); color: #1f2328; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 1px 4px rgba(0, 0, 0, .22); z-index: 5; }
+  .o3-tag i { width: 7px; height: 7px; border-radius: 50%; background: var(--sc); }
+  .o3-tag .ico { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--sc); color: #fff; font-size: 11px; font-weight: 900; line-height: 1; }
+  .o3-tag.icon-only { padding: 0; background: none; box-shadow: none; }
+  .o3-tag.icon-only i, .o3-tag.icon-only span { display: none; }
+  .o3-tag.icon-only .ico { width: 20px; height: 20px; font-size: 13px; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); animation: o3bob 1.1s ease-in-out infinite; }
+  .o3-bub { pointer-events: auto; cursor: pointer; background: #fffefb; color: #1f2328; border-left: 3px solid var(--c, #8f969d); border-radius: 8px; padding: .25em .5em .3em; min-width: 60px; max-width: var(--mw, 180px); font-size: 11.5px; line-height: 1.35; box-shadow: 0 3px 10px rgba(0, 0, 0, .22); }
+  .o3-bub::after { content: ""; position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); border: 6px solid transparent; border-bottom: 0; border-top-color: #fffefb; }
+  .o3-bub.below::after { bottom: auto; top: -6px; border: 6px solid transparent; border-top: 0; border-bottom-color: #fffefb; }
+  .o3-bub b { display: none; }
+  .o3-bub p { margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .o3-bub.latest { box-shadow: 0 0 0 1.5px var(--c), 0 4px 12px rgba(0, 0, 0, .25); }
+  .o3-bub.latest p { -webkit-line-clamp: 3; }
+  .o3-bub.big { font-size: 13px; padding: .4em .65em .45em; border-left-width: 4px; }
+  .o3-bub.big b { display: block; font-size: .82em; color: #5b6470; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .o3-bub.big p { -webkit-line-clamp: 9; }
+  .o3-bub.tool p { color: #5b6470; font-style: italic; }
+  .o3-bub.alert { background: #fff3f2; border-left-color: var(--approval); }
+  .o3-bub.alert::after { border-top-color: #fff3f2; }
+  .o3-bub.alert.below::after { border-top-color: transparent; border-bottom-color: #fff3f2; }
+  .o3-bub:hover { z-index: 40 !important; max-width: min(460px, 70vw); }
+  .o3-bub:hover p { display: block; -webkit-line-clamp: unset; max-height: 50vh; overflow-y: auto; }
+  .o3-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 5; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: rgba(20, 24, 30, .74); }
+  .o3-tools button { border: 0; background: transparent; color: #fff; min-width: 32px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 15px; }
+  .o3-tools button:hover { background: rgba(255, 255, 255, .15); }
+  .o3-tools .wide { padding: 0 10px; font-size: 12.5px; font-weight: 700; }
+  .o3-hint { position: absolute; left: 50%; bottom: 50px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 24px); padding: 3px 10px; border-radius: 8px; background: rgba(20, 24, 30, .6); color: #fff; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .8s; }
+  .o3-hint.fade { opacity: 0; }
+  .o3-back { z-index: 6; }
+  .o3-look { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 7; display: grid; gap: 8px; min-width: min(320px, calc(100% - 24px)); padding: 10px 12px; border-radius: 12px; background: rgba(20, 24, 30, .88); color: #fff; font-size: 12.5px; }
+  .o3-look-row { display: flex; align-items: center; gap: 10px; }
+  .o3-look-row > span { flex: none; width: 44px; color: #c9d1d9; font-weight: 700; }
+  .o3-look-row input[type=range] { flex: 1; min-width: 0; }
+  .o3-look-row em { font-style: normal; font-size: 11px; color: #9aa4ae; white-space: nowrap; }
+  .o3-themes { display: flex; flex-wrap: wrap; gap: 4px; }
+  .o3-themes button { border: 1px solid rgba(255, 255, 255, .28); background: transparent; color: #fff; border-radius: 999px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .o3-themes button.on { background: #fff; color: #1f2328; font-weight: 700; }
+  .o3-ceo-btn { border: 1px solid rgba(255, 255, 255, .28); background: transparent; color: #fff; border-radius: 8px; width: 28px; height: 26px; cursor: pointer; }
+  .o3-ceo-name { flex: 1; min-width: 0; text-align: center; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .o3-tag.sel { box-shadow: 0 0 0 2px #f2c14e, 0 1px 4px rgba(0, 0, 0, .22); }
+  .office3d .speech-card { z-index: 8; }
+  @keyframes o3pulse { 50% { box-shadow: 0 0 0 2px transparent, 0 2px 8px rgba(0, 0, 0, .18); } }
+  @keyframes o3bob { 50% { transform: translateY(-3px); } }
+  @media (prefers-reduced-motion: reduce) { .o3-room.alert, .o3-tag.icon-only .ico { animation: none; } }
 </style>
 </head>
 <body>
@@ -452,8 +534,14 @@
       <p id="sub">기록을 불러오는 중…</p>
     </div>
     <div class="chips" id="chips"></div>
-    <div class="viewseg" role="group" aria-label="보기 크기">
+    <div class="viewseg" id="dimSeg" role="group" aria-label="평면도/3D">
+      <button type="button" data-dim="2d" title="평면도">2D</button><button type="button" data-dim="3d" title="사람이 실제 상태대로 걸어 다니는 3D 사무실">3D</button>
+    </div>
+    <div class="viewseg" id="viewSeg" role="group" aria-label="보기 크기">
       <button type="button" data-view="auto" title="화면 폭에 맞춰서">자동</button><button type="button" data-view="one" title="한 줄에 방 1개씩 크게">크게</button><button type="button" data-view="all" title="한 줄에 방 3개씩 줄여서 한눈에">작게</button>
+    </div>
+    <div class="layoutseg" id="layoutSeg" role="group" aria-label="화면 배치">
+      <button type="button" data-lay="full" class="wide-only" title="화면 폭을 끝까지 쓰기">꽉 차게</button><button type="button" data-lay="side" class="wide-only" title="오른쪽 패널을 왼쪽으로 옮기기">패널 ⇄</button><button type="button" data-lay="hide" title="오른쪽 패널 숨기기/보이기">패널 숨김</button>
     </div>
     <button class="theme-btn" id="themeBtn" type="button" aria-label="밝게/어둡게 바꾸기">◐</button>
   </div>
@@ -461,9 +549,11 @@
   <div class="layout">
     <main class="stage" id="stage" aria-label="사무실 평면도">
       <div id="office"></div>
+      <div class="office3d" id="office3d" hidden></div>
       <div class="room-view" id="roomView" hidden></div>
     </main>
     <aside class="side">
+      <div class="side-grip" id="sideGrip" title="끌어서 패널 폭 바꾸기" role="separator" aria-orientation="vertical"></div>
       <div class="side" id="sideDefault">
         <section class="card">
           <h2>확인할 일 <span class="n" id="todoN"></span></h2>
@@ -475,7 +565,7 @@
         </section>
         <section class="card">
           <div class="legend" id="legend"></div>
-          <p class="hint">회의실을 누르면 안으로 들어가 각자 하는 말과 회의록을 볼 수 있어요. 화이트보드 = 회의 안건, 책상 명패 = 세션, 의자 등받이 글씨 = 워커 종류예요.</p>
+          <p class="hint" id="legendHint"></p>
         </section>
       </div>
       <div class="side" id="sideRoom" hidden>
@@ -1133,7 +1223,7 @@
     return w >= 900 ? 3 : w >= 540 ? 2 : 1;
   }
   function markView() {
-    document.querySelectorAll('.viewseg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === viewMode); });
+    document.querySelectorAll('#viewSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === viewMode); });
   }
 
   function renderOffice(now, meetings) {
@@ -1302,9 +1392,12 @@
     document.title = (waiting ? '(' + waiting + ') ' : '') + '업무방 현황판';
 
     currentMeetings = meetings;
-    renderOffice(now, meetings);
-    renderPlanBubbles(now);
-    if (zoomRoom) renderRoomView(now);
+    if (dim === '3d') render3d(now);
+    else {
+      renderOffice(now, meetings);
+      renderPlanBubbles(now);
+      if (zoomRoom) renderRoomView(now);
+    }
     renderSide();
 
     var todo =sessions.filter(function (s) { return ['approval', 'question', 'error', 'done'].indexOf(s.state) >= 0; })
@@ -1466,6 +1559,7 @@
   }
 
   function renderRoomView(now) {
+    if (dim === '3d') { render3d(now); return; }
     if (!zoomRoom || !data) return;
     var room = roomsView().filter(function (r) { return r.name === zoomRoom; })[0];
     if (!room) { exitRoom(); return; }
@@ -1494,6 +1588,16 @@
 
   function enterRoom(name) {
     if (zoomRoom || !data) return;
+    if (dim === '3d') {
+      // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
+      if (!roomsView().some(function (r) { return r.name === name; })) return;
+      zoomRoom = name; logData = null; lastMinKey = ''; expanded = {}; cardSid = null;
+      try { history.replaceState(null, '', '#room=' + encodeURIComponent(name)); } catch (_) {}
+      renderSide();
+      loadRoomLog();
+      render3d(Date.now());
+      return;
+    }
     var cell = office.querySelector('.room-cell[data-room="' + CSS.escape(name) + '"]');
     if (!cell) return;
     zoomRoom = name; logData = null; lastRoomScene = ''; lastBubbleKey = ''; lastMinKey = ''; expanded = {};
@@ -1520,6 +1624,7 @@
 
   function exitRoom() {
     if (!zoomRoom) return;
+    if (dim === '3d') { leaveRoomNow(); renderSpeechCard(); render3d(Date.now()); return; }
     var name = zoomRoom;
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     zoomRoom = null; logData = null; cardSid = null;
@@ -1694,8 +1799,148 @@
     document.getElementById('scrim').classList.remove('open');
   }
 
+  // ---------- 3D 사무실 ----------
+  // 2D/3D 단추로 바꾼다. 처음 3D 를 켤 때 office3d.js 를 불러오고, 그 안에서 Three.js 와 사람 모델(models/)을 불러온다.
+  // 자리 배치(layoutRoom)와 말풍선 내용(bubbleFor)은 2D 와 같은 것을 장면 정보로 넘긴다.
+  var HINT_2D = '회의실을 누르면 안으로 들어가 각자 하는 말과 회의록을 볼 수 있어요. 화이트보드 = 회의 안건, 책상 명패 = 세션, 의자 등받이 글씨 = 워커 종류예요.';
+  var HINT_3D = '3D에서는 사람이 실제 상태대로 움직여요. 일하는 중이면 자리에서 타자, 승인·답변 대기면 로비의 대표 자리로 와서 줄 서고, 막히면 일어서요. 로봇은 워커예요. 5분 넘게 쉬는 세션은 가끔 커피·소파로 다녀와요. 방을 누르면 들어가 회의록을 봐요.';
+  var dim = '2d';
+  try { dim = localStorage.getItem('workroom-dim') === '3d' ? '3d' : '2d'; } catch (_) {}
+  // 링크에 ?d=3d (또는 2d) 를 붙이면 그 보기로 연다
+  var dimQuery = /[?&]d=(2d|3d)\b/.exec(location.search);
+  if (dimQuery) { dim = dimQuery[1]; try { localStorage.setItem('workroom-dim', dim); } catch (_) {} }
+  var office3dEl = document.getElementById('office3d');
+  var o3 = null, o3Loading = false;
+
+  function cssColor(v) {
+    var m = /^var\((--[\w-]+)\)$/.exec(v || '');
+    return m ? getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim() : v;
+  }
+  function darkTheme() {
+    var t = document.documentElement.getAttribute('data-theme');
+    return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function scene3d(now) {
+    var info = speechInfo();
+    var sessions = data.sessions || [];
+    var rooms = roomsView().map(function (room) {
+      var list = sessions.filter(function (s) { return s.room === room.name; });
+      var mt = roomMeeting(room.name);
+      var k = seatsPerRow(list, room.kind, mt);
+      var L = withGeo(interiorGeo(k), function () { return layoutRoom(list, room.kind, mt); });
+      var people = [];
+      function add(p, row, i) {
+        if (!p) return;
+        if (p.worker) {
+          people.push({ id: 'w:' + p.seed, worker: true, type: p.type, parent: p.parent.id, row: row, seat: i, name: p.type, state: 'working', color: personColor(p.parent.id) });
+          return;
+        }
+        var s = p.s;
+        people.push({ id: s.id, row: row, seat: i, name: p.label || fit(titleOf(s), 12), title: titleOf(s), chair: !!p.chair, state: s.state, since: s.stateSince || 0,
+          color: personColor(s.id), look: look(s.id), bubble: bubbleFor(s, info[s.id], now) });
+      }
+      L.far.forEach(function (p, i) { add(p, 'far', i); });
+      L.near.forEach(function (p, i) { add(p, 'near', i); });
+      var st = roomStatus(L.mains.map(function (m) { return m.s; }), L.people, mt);
+      return {
+        name: room.name, no: room.no, label: room.label, machine: room.machine, kind: room.kind, k: k, overflow: L.overflow,
+        status: { label: st.label, color: cssColor(st.color), blink: !!st.blink },
+        alert: list.some(function (s) { return s.state === 'approval' || s.state === 'question'; }) || !!(mt && mt.waitingForUser),
+        meeting: mt ? { agenda: mt.agenda, phase: roundPhase(mt), waiting: !!mt.waitingForUser } : null,
+        people: people
+      };
+    });
+    var colors = {}, labels = {};
+    Object.keys(STATE).forEach(function (k) { colors[k] = cssColor(STATE[k].color); labels[k] = STATE[k].label; });
+    return {
+      now: now, hour: new Date(now).getHours(), dark: darkTheme(), focus: zoomRoom, rooms: rooms, colors: colors, labels: labels,
+      machines: (data.machines || []).map(function (m) { return { name: m.name, ago: ago(m.generatedAt, now) || '0초' }; })
+    };
+  }
+  function render3d(now) {
+    if (dim === '3d' && o3 && data) o3.update(scene3d(now));
+  }
+  var host3d = {
+    room: function (name) { if (zoomRoom === name) return; if (zoomRoom) leaveRoomNow(); enterRoom(name); },
+    person: function (id) { openSheet(id); },
+    speech: function (id) { cardSid = id; lastCardKey = ''; renderSpeechCard(); },
+    back: function () { exitRoom(); }
+  };
+  // 애니메이션 없이 바로 회의실에서 나온다 (2D/3D 바꿀 때, 3D 에서 나갈 때).
+  function leaveRoomNow() {
+    if (!zoomRoom) return;
+    zoomRoom = null; logData = null; cardSid = null;
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    stage.classList.remove('zoomed');
+    roomView.classList.remove('show');
+    roomView.hidden = true;
+    roomView.innerHTML = '';
+    office.style.transform = '';
+    stage.style.height = '';
+    renderSide();
+  }
+  function markDim() {
+    document.querySelectorAll('#dimSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dim') === dim); });
+    document.getElementById('viewSeg').hidden = dim === '3d';
+    office.hidden = dim === '3d';
+    office3dEl.hidden = dim !== '3d';
+    document.getElementById('legendHint').textContent = dim === '3d' ? HINT_3D : HINT_2D;
+  }
+  function loadScript(src, done) {
+    var el = document.createElement('script');
+    el.src = src;
+    el.onload = function () { done(true); };
+    el.onerror = function () { el.remove(); done(false); };
+    document.head.appendChild(el);
+  }
+  function addCard3d() {
+    if (!document.getElementById('speechCard')) office3dEl.insertAdjacentHTML('beforeend', '<div class="speech-card" id="speechCard" role="dialog" aria-label="최근에 한 말" hidden></div>');
+  }
+  function start3d() {
+    if (o3) { addCard3d(); o3.show(true); return; }
+    if (o3Loading) return;
+    o3Loading = true;
+    office3dEl.innerHTML = '<div class="o3-msg">3D 사무실을 불러오는 중…</div>';
+    var fail = function (why) {
+      o3Loading = false;
+      office3dEl.innerHTML = '<div class="o3-msg">' + esc(why) + '<br>위의 2D 단추로 평면도를 볼 수 있어요.</div>';
+    };
+    var ready = function (api) {
+      office3dEl.innerHTML = '';
+      try { o3 = api.mount(office3dEl, host3d); }
+      catch (e) { fail('이 브라우저에서는 3D(WebGL)를 쓸 수 없어요.'); return; }
+      o3Loading = false;
+      if (dim !== '3d') return;
+      addCard3d();
+      o3.show(true);
+      render3d(Date.now());
+    };
+    var start = function () {
+      window.Office3D.load().then(ready, function () { fail('3D 라이브러리를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); });
+    };
+    if (window.Office3D) start();
+    else loadScript('office3d.js', function (ok) { if (ok && window.Office3D) start(); else fail('3D 화면 파일(office3d.js)을 불러오지 못했어요.'); });
+  }
+  function stop3d() {
+    if (o3) o3.show(false);
+    var card = office3dEl.querySelector('#speechCard');
+    if (card) card.remove();
+  }
+  function setDim(next) {
+    if (next === dim) return;
+    leaveRoomNow();
+    dim = next;
+    try { localStorage.setItem('workroom-dim', dim); } catch (_) {}
+    markDim();
+    if (dim === '3d') start3d(); else stop3d();
+    lastScene = '';
+    render();
+  }
+
   document.addEventListener('click', function (e) {
     if (e.target.id === 'scrim') { closeSheet(); return; }
+    var db = e.target.closest('#dimSeg button');
+    if (db) { setDim(db.getAttribute('data-dim')); return; }
     if (e.target.closest('.sheet')) return;
     if (e.target.closest('#rvBack') || e.target.closest('.rv-door')) { exitRoom(); return; }
     if (e.target.closest('.sc-close')) { cardSid = null; renderSpeechCard(); return; }
@@ -1749,6 +1994,53 @@
     } else { input.select(); document.execCommand('copy'); done(); }
   });
 
+  // 화면 배치: 꽉 차게, 패널 왼쪽/오른쪽, 패널 숨김, 패널 폭(가장자리를 끌어서). 이 브라우저에 기억해 둔다.
+  var LAYOUT_KEY = 'workroom-layout';
+  var lay = { full: false, side: 'right', hide: false, w: 320 };
+  try { Object.assign(lay, JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}')); } catch (_) {}
+  function applyLayout(save) {
+    document.body.classList.toggle('full', !!lay.full);
+    document.body.classList.toggle('side-left', lay.side === 'left');
+    document.body.classList.toggle('side-hide', !!lay.hide);
+    document.documentElement.style.setProperty('--side-w', Math.round(lay.w) + 'px');
+    document.querySelectorAll('#layoutSeg button').forEach(function (b) {
+      var k = b.getAttribute('data-lay');
+      b.classList.toggle('on', k === 'full' ? !!lay.full : k === 'side' ? lay.side === 'left' : !!lay.hide);
+    });
+    if (save) {
+      try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(lay)); } catch (_) {}
+      window.dispatchEvent(new Event('resize'));
+    }
+  }
+  applyLayout(false);
+  document.getElementById('layoutSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-lay]');
+    if (!b) return;
+    var k = b.getAttribute('data-lay');
+    if (k === 'full') lay.full = !lay.full;
+    else if (k === 'side') { lay.side = lay.side === 'left' ? 'right' : 'left'; lay.hide = false; }
+    else lay.hide = !lay.hide;
+    applyLayout(true);
+  });
+  (function () {
+    var grip = document.getElementById('sideGrip'), start = null;
+    grip.addEventListener('pointerdown', function (e) {
+      start = { x: e.clientX, w: lay.w };
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('drag');
+      e.preventDefault();
+    });
+    grip.addEventListener('pointermove', function (e) {
+      if (!start) return;
+      var dx = e.clientX - start.x;
+      lay.w = Math.max(240, Math.min(720, start.w + (lay.side === 'left' ? dx : -dx)));
+      document.documentElement.style.setProperty('--side-w', Math.round(lay.w) + 'px');
+    });
+    function end() { if (!start) return; start = null; grip.classList.remove('drag'); applyLayout(true); }
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  })();
+
   var themeKey = 'workroom-theme';
   function applyTheme(t) { if (t) document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme'); }
   try { applyTheme(localStorage.getItem(themeKey)); } catch (_) {}
@@ -1758,6 +2050,7 @@
     var next = dark ? 'light' : 'dark';
     applyTheme(next);
     try { localStorage.setItem(themeKey, next); } catch (_) {}
+    render3d(Date.now());
   });
 
   document.getElementById('legend').innerHTML = ['working', 'approval', 'question', 'done', 'error', 'idle'].map(function (k) {
@@ -1765,6 +2058,8 @@
   }).join('');
 
   markView();
+  markDim();
+  if (dim === '3d') start3d();
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
@@ -1778,8 +2073,11 @@
       el.remove();
       speechData = window.__WORKROOM_SPEECH__ || null;
       var now = Date.now();
-      renderPlanBubbles(now);
-      if (zoomRoom) renderRoomView(now);
+      if (dim === '3d') render3d(now);
+      else {
+        renderPlanBubbles(now);
+        if (zoomRoom) renderRoomView(now);
+      }
     };
     el.onerror = function () { el.remove(); };
     document.head.appendChild(el);

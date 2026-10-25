@@ -16,7 +16,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const TARGET = path.join(os.homedir(), '.claude', 'workroom');
-const CODE = ['hook.js', 'install-hooks.js', 'sync.js', 'server.js', 'tunnel.js', '현황판.html'];
+const CODE = ['hook.js', 'install-hooks.js', 'sync.js', 'server.js', 'tunnel.js', '현황판.html', 'office3d.js'];
 const TASK = 'WorkroomSync';
 const argv = process.argv.slice(2);
 const has = (flag) => argv.includes(flag);
@@ -26,6 +26,15 @@ fs.mkdirSync(TARGET, { recursive: true });
 for (const f of CODE) {
   fs.copyFileSync(path.join(__dirname, f), path.join(TARGET, f));
   console.log('복사:', f);
+}
+
+// 3D 사람 모델 (models/p<번호>.js). 저장소에 있는 것만 복사하고, 이 PC에만 있는 모델은 그대로 둔다.
+const MODELS = path.join(__dirname, 'models');
+if (fs.existsSync(MODELS)) {
+  fs.mkdirSync(path.join(TARGET, 'models'), { recursive: true });
+  const files = fs.readdirSync(MODELS).filter((f) => /^p\d+\.js$/.test(f));
+  files.forEach((f) => fs.copyFileSync(path.join(MODELS, f), path.join(TARGET, 'models', f)));
+  console.log(`복사: models/ (${files.length}명)`);
 }
 
 const rooms = path.join(TARGET, 'rooms.json');
