@@ -497,6 +497,21 @@
   .s-sub { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .staff-row.calm .s-name { color: var(--muted); }
   .p-empty { padding: 3px 6px 6px 22px; font-size: 11.5px; color: var(--muted); }
+  /* 컴퓨터(층)·프로젝트(방) 묶음 상자 (직원·회의록 트리·하루 요약): 층 상자는 3D 층 띠와 같은 색, 그 안에 방마다 흰 상자 */
+  .f-box { border: 1px solid color-mix(in srgb, var(--fc) 40%, var(--line)); border-left: 5px solid var(--fc); border-radius: 10px; background: color-mix(in srgb, var(--fc) 6%, var(--panel)); margin: 0 0 8px; overflow: hidden; }
+  .f-box > .floor-h, .f-box > .t-row { margin: 0; border-radius: 0; border-bottom: 1px solid color-mix(in srgb, var(--fc) 25%, var(--line)); background: color-mix(in srgb, var(--fc) 13%, transparent); }
+  .f-box > .floor-h[aria-expanded="false"], .f-box > .t-row[aria-expanded="false"] { border-bottom: 0; }
+  .f-box > .floor-h .p-name, .f-box > .t-row { color: color-mix(in srgb, var(--fc) 72%, var(--ink)); }
+  .f-box > .t-row .n { color: var(--muted); }
+  .f-box > ul { margin: 0 !important; padding: 6px !important; display: grid; gap: 6px; }
+  .f-box .p-empty { padding: 0 4px 2px; }
+  .p-box { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+  .p-box > .part-h, .p-box > .t-row { border-radius: 0; background: var(--panel-2); }
+  .p-box > .staff-list, .p-box > ul { border-top: 1px solid var(--line); }
+  .p-box > .staff-list { padding: 3px 4px 4px !important; margin: 0 !important; }
+  .min-tree .p-box > ul { padding: 4px 6px 6px !important; }
+  .daily .p-box.d-room { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .staff > .p-box { margin-bottom: 6px; }
   /* 방 안: 방 카드(방 나가기 줄·이 방 직원·이 방 회의록)가 같은 탭의 다른 카드보다 위 (범례는 숨김) */
   #sideRoom { order: -1; }
   #sideDefault.in-room .legend-card { display: none; }
@@ -2332,11 +2347,11 @@
     box.innerHTML = minIndex.machines.map(function (m) {
       rooms += m.rooms.length;
       var mo = !!treeOpen[mNode(m)];
-      return '<li class="t-m"><button type="button" class="t-row" data-node="' + esc(mNode(m)) + '" aria-expanded="' + mo + '">' + esc(m.name) +
+      return '<li class="t-m f-box" style="--fc:' + floorColor(m.self ? '' : m.name) + '"><button type="button" class="t-row" data-node="' + esc(mNode(m)) + '" aria-expanded="' + mo + '">' + esc(m.name) +
         (m.self ? ' <span class="t-sub">이 컴퓨터</span>' : '') + '<span class="n">방 ' + m.rooms.length + '</span></button>' +
         (mo ? '<ul>' + m.rooms.map(function (r) {
           var ro = !!treeOpen[rNode(m, r)];
-          return '<li class="t-r"><button type="button" class="t-row" data-node="' + esc(rNode(m, r)) + '" aria-expanded="' + ro + '">' + esc(r.name) +
+          return '<li class="t-r p-box"><button type="button" class="t-row" data-node="' + esc(rNode(m, r)) + '" aria-expanded="' + ro + '">' + esc(r.name) +
             '<span class="n">' + esc(r.days[0].d === today ? '오늘' : r.days[0].d.slice(5)) + ' · ' + r.days.length + '일</span></button>' +
             (ro ? '<ul>' + r.days.map(function (d) {
               var dn = dNode(m, r, d.d), dO = !!treeOpen[dn];
@@ -2473,13 +2488,13 @@
         x.list.sort(function (a, b) { var ra = staffInfo(a).rank, rb = staffInfo(b).rank; return ra - rb || (b.stateSince || 0) - (a.stateSince || 0); });
         var pk = 'part:' + x.p.name, pfold = !!fold[pk];
         var dots = x.list.slice(0, 10).map(function (s) { return '<i style="--c:' + staffInfo(s).color + '"></i>'; }).join('') + (x.list.length > 10 ? '<em>+' + (x.list.length - 10) + '</em>' : '');
-        return '<li><button type="button" class="part-h" data-fold="' + esc(pk) + '" aria-expanded="' + !pfold + '"><span class="p-name">' + esc(x.p.label) + '</span>' +
+        return '<li class="p-box"><button type="button" class="part-h" data-fold="' + esc(pk) + '" aria-expanded="' + !pfold + '"><span class="p-name">' + esc(x.p.label) + '</span>' +
           '<span class="p-dots">' + dots + '</span><span class="n">' + x.list.length + '명</span></button>' +
           (pfold ? '' : '<ul class="staff-list">' + x.list.map(function (s) { return staffRowHtml(s, now); }).join('') + '</ul>') + '</li>';
       }).join('');
       if (staffFilter === 'all' && empty.length) inner += '<li class="p-empty">빈 파트 ' + empty.length + ' · ' + esc(empty.map(function (p) { return p.label; }).join(' · ')) + '</li>';
       if (!inner) return;
-      html += multi ? '<li><button type="button" class="floor-h" data-fold="' + esc(ffk) + '" aria-expanded="' + !ffold + '"><span class="p-name">' + esc(f.name) + '</span><span class="n">' + (usageShort(f.m) ? usageShort(f.m) + ' · ' : '') + n + '명</span></button>' +
+      html += multi ? '<li class="f-box" style="--fc:' + floorColor(f.m) + '"><button type="button" class="floor-h" data-fold="' + esc(ffk) + '" aria-expanded="' + !ffold + '"><span class="p-name">' + esc(f.name) + '</span><span class="n">' + (usageShort(f.m) ? usageShort(f.m) + ' · ' : '') + n + '명</span></button>' +
         (ffold ? '' : '<ul>' + inner + '</ul>') + '</li>' : inner;
     });
     var none = { all: '열려 있는 세션이 없어요.', working: '일하는 AI가 없어요.', turn: '내 차례인 세션이 없어요.', idle: '대기 중인 세션이 없어요.' };
@@ -2638,11 +2653,11 @@
     document.getElementById('dailyBox').innerHTML = machs.map(function (m) {
       var fk = 'daily:' + m.name, f = !!fold[fk], t = sumOf(m.rooms);
       var rooms = m.rooms.slice().sort(function (a, b) { return (b.ask + b.say) - (a.ask + a.say); });
-      return '<li><button type="button" class="floor-h" data-fold="' + esc(fk) + '" aria-expanded="' + !f + '"><span class="p-name">' + esc(m.name) + '</span><span class="n">' + sumText(t) + '</span></button>' +
+      return '<li class="f-box" style="--fc:' + floorColor(m.self ? '' : m.name) + '"><button type="button" class="floor-h" data-fold="' + esc(fk) + '" aria-expanded="' + !f + '"><span class="p-name">' + esc(m.name) + '</span><span class="n">' + sumText(t) + '</span></button>' +
         (f ? '' : '<ul>' + rooms.map(function (r) {
           var hs = r.hours.map(function (v, h) { return v ? h : -1; }).filter(function (h) { return h >= 0; });
           var span = hs.length ? hs[0] + '~' + (hs[hs.length - 1] + 1) + '시' : '';
-          return '<li class="d-room"><div><b>' + esc(r.name) + '</b><em>' + sumText(r) + (span ? ' · ' + span : '') + '</em></div>' +
+          return '<li class="d-room p-box"><div><b>' + esc(r.name) + '</b><em>' + sumText(r) + (span ? ' · ' + span : '') + '</em></div>' +
             (r.people || []).slice(0, 3).map(function (p) { return '<p><strong>' + esc(p.who) + '</strong> ' + hm(p.t) + ' · ' + esc(p.last) + '</p>'; }).join('') + '</li>';
         }).join('') + '</ul>') + '</li>';
     }).join('');
@@ -2953,6 +2968,17 @@
       });
     }
   });
+
+  // 컴퓨터(층)마다 색: office3d.js 의 ZONE_COLORS 와 같은 색을 같은 차례로 (3D 층 띠와 맞춘다). mach = '' 은 이 컴퓨터
+  var FLOOR_COLORS = ['#3b7ddd', '#e0703c', '#2e9d6c', '#9a5bd5', '#d39b12', '#d6457a'];
+  function floorColor(mach) {
+    var order = [];
+    roomsView().forEach(function (r) { if (order.indexOf(r.machine) < 0) order.push(r.machine); });
+    if (order.indexOf('') < 0) order.unshift('');
+    ((data && data.machines) || []).forEach(function (m) { if (order.indexOf(m.name) < 0) order.push(m.name); });
+    var i = order.indexOf(mach || '');
+    return FLOOR_COLORS[(i < 0 ? order.length : i) % FLOOR_COLORS.length];
+  }
 
   // ---------- 방 안: 이 방 직원과 '사람 고용' ----------
   // 고용 = 그 방 프로젝트 폴더에 Orca 새 탭을 열고 claude -n "이름" 으로 새 세션 (server.js /__hire → send.js --hire).
