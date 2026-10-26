@@ -364,6 +364,7 @@
         '<button type="button" data-a="out" title="축소" aria-label="축소">−</button>' +
         '<button type="button" data-a="in" title="확대" aria-label="확대">+</button>' +
         '<button type="button" data-a="grab" title="손: 사람을 끌어 옮겨요. 의자에 놓으면 앉고(다른 방이면 잠깐 앉았다 돌아가요), 그냥 누르면 쓰다듬어요" aria-label="손" aria-pressed="false">✋</button>' +
+        '<button type="button" data-a="rollcall" title="점호: 모두 오른쪽 빈 곳에 10열 종대로 모여 대표와 파이팅하고 흩어져요 (다시 누르면 해산)" aria-label="점호" aria-pressed="false">📣</button>' +
         '<button type="button" data-a="home" class="wide" title="전체 보기">전체</button>' +
         '<button type="button" data-a="look" class="wide" title="사무실 색과 조명 바꾸기" aria-expanded="false">조명</button>' +
         '<button type="button" data-a="city" class="wide" title="건물 아래 거리와 주변 빌딩 (느리면 끄세요)" aria-pressed="false">도시</button>';
@@ -633,7 +634,7 @@
           rug: lam(P.rug), desk: lam(P.desk), mat: lam(P.mat), carpet: lam(P.carpet), lounge: lam(P.lounge),
           dark: lam('#3a414a'), white: lam('#ffffff'), cooler: lam('#e8f0f6'), water: lam('#8fd0f2'), led: basic('#ff8a4c'),
           seats: P.seats.map(function (c) { return lam(c); }),
-          ceoFloor: lam(shade(P.lobby, 0.92)), napFloor: lam(shade(P.carpet, 0.62)), vending: lam(P.seats[0]), fridge: lam('#e9eef2'),
+          ceoFloor: lam(shade(P.lobby, 0.92)), elevFloor: lam(shade(P.floorLine, 0.95)), napFloor: lam(shade(P.carpet, 0.62)), vending: lam(P.seats[0]), fridge: lam('#e9eef2'),
           mullion: lam(shade(P.cap, 0.72)), spandrel: lam(shade(P.cap, 0.5)), gold: lam('#d8b24a'), felt: lam('#2f7d5b'), fish: lam('#f08a3c'),
           bulb: basic('#fff1d2'), menu: lam('#2f3a35'), curtain: lam(shade(P.counter, 0.97)), fruit: [lam('#f2b134'), lam('#e05a4f'), lam('#7fb069')],
           glass: new T.MeshLambertMaterial({ color: P.glass, transparent: true, opacity: 0.22, depthWrite: false, side: T.DoubleSide }),
@@ -767,6 +768,9 @@
           mesh(G.box, m, 0.8, 0.22, 0.8, 0, 0.63, 0.62, draped);   // 발끝이 이불 밖으로 비치지 않게 다리 쪽을 조금 더 높게
           mound.castShadow = true;
           mesh(G.box, M.white, 0.97, 0.06, 0.14, 0, 0.535, -0.43, draped);
+          // 얼굴 위로 끌어 올린 이불: 뜬 눈이 안 보이게 눈썹까지 덮고 머리끝만 내놓는다
+          var hood = mesh(G.sph, m, 0.84, 0.72, 0.8, 0, 0.66, -0.66, draped);
+          hood.castShadow = true;
           draped.visible = false;
           dyn.add(folded, draped);
           return { folded: folded, draped: draped };
@@ -1031,39 +1035,42 @@
           labels.push({ el: pl, plate: ppl, ax: '-50%', ay: '-50%', minPpm: 7 });
         });
 
-        // 아래쪽: 엘리베이터 + 대표실 · 휴게실 · 수면실. 세 방은 벽과 문이 있고, 문 앞으로 로비 길(laneZ)이 지난다.
+        // 아래쪽: 엘리베이터실 + 대표실 · 휴게실 · 수면실. 네 방은 벽과 문이 있고, 문 앞으로 로비 길(laneZ)이 지난다.
         var rz0 = zL + LANE_D, rz1 = lobby.z1;
-        var ez = zL + LANE_D / 2;
-        box(0.3, 2.5, 1.4, M.cap, 0.15, 1.25, ez);
-        box(0.04, 2.1, 0.6, M.metal, 0.32, 1.05, ez - 0.31);
-        box(0.04, 2.1, 0.6, M.metal, 0.32, 1.05, ez + 0.31);
-        box(0.03, 0.14, 0.5, M.led, 0.32, 2.3, ez);
-        W.elev = { key: 'elev', place: { t: 'lobby' }, x: 0.9, ax: 0.9, z: ez, yaw: -Math.PI / 2, pose: 'stand' };
-        labels.push({ el: spotLabel('엘리베이터'), x: 0.3, y: 2.75, z: ez, ax: '-50%', ay: '-100%', minPpm: 9 });
+        // 엘리베이터실: 왼쪽 아래 네모 방. 엘리베이터는 왼쪽 벽에 있고, 오가는 사람은 위쪽 문으로 로비 길에 드나든다.
+        var eD = clamp(SPINE, 2.8, 3.6), ez = rz0 + eD / 2;
+        var elevR = lowerRoom(0, SPINE, '엘리베이터', M.elevFloor, '#8a94a6', rz0 + eD, true);
+        box(0.3, 2.6, 2.2, M.cap, 0.15, 1.3, ez);
+        box(0.02, 2.1, 1.2, M.dark, 0.31, 1.05, ez);   // 문이 열리면 보이는 칸 안
+        box(0.03, 0.14, 0.5, M.led, 0.33, 2.38, ez);
+        // 문 두 짝은 사람이 타고 내릴 때 옆으로 열린다 (frame)
+        W.elevDoor = { z: ez, open: 0, doors: [-1, 1].map(function (s) { return mesh(G.box, M.metal, 0.04, 2.1, 0.6, 0.34, 1.05, ez + s * 0.31, dyn); }) };
+        W.elev = { key: 'elev', place: elevR.place(ez), x: 0.95, ax: 0.95, z: ez, yaw: -Math.PI / 2, pose: 'stand' };
+        plant(SPINE - 0.45, rz0 + eD - 0.45, 0.8);
         plant(spineX(), rz1 - 0.6, 1.2);
-        plant(spineX(), rz0 + 1.2, 0.9);
 
         var avail = maxX - SPINE, xA = SPINE, xB = xA + avail * 0.36, xC = xB + avail * 0.37, xD = maxX;
         // 벽(아래 벽돌, 위 유리)과 위쪽 문이 있는 방 하나. 카메라 쪽(아래) 벽은 유리만 둔다.
-        function lowerRoom(x0, x1, name, floorMat, accent) {
-          var doorX = x0 + 1.3, Rm = { name: name, x0: x0, x1: x1, z0: rz0, z1: rz1, doorX: doorX };
-          box(x1 - x0 - WALL_T, 0.012, rz1 - rz0 - WALL_T, floorMat, (x0 + x1) / 2, 0.007, (rz0 + rz1) / 2);
+        // zEnd: 카메라 쪽 유리벽 z (없으면 로비 끝까지), shared: 오른쪽 벽은 옆 방 벽을 같이 쓴다
+        function lowerRoom(x0, x1, name, floorMat, accent, zEnd, shared) {
+          var z1 = zEnd || rz1, doorX = x0 + 1.3, Rm = { name: name, x0: x0, x1: x1, z0: rz0, z1: z1, doorX: doorX };
+          box(x1 - x0 - WALL_T, 0.012, z1 - rz0 - WALL_T, floorMat, (x0 + x1) / 2, 0.007, (rz0 + z1) / 2);
           wallX(x0, doorX - 0.6, rz0);
           wallX(doorX + 0.6, x1, rz0);
           box(0.08, WALL_H, 0.12, M.cap, doorX - 0.6, WALL_H / 2, rz0);
           box(0.08, WALL_H, 0.12, M.cap, doorX + 0.6, WALL_H / 2, rz0);
           box(1.2, 0.14, 0.12, M.cap, doorX, WALL_H - 0.07, rz0);
           box(1.1, 0.01, 0.55, M.mat, doorX, 0.006, rz0 - 0.4);
-          wallZ(x0, rz0, rz1);
-          wallZ(x1, rz0, rz1);
-          glassFront(x0, x1, rz1);
+          wallZ(x0, rz0, z1);
+          if (!shared) wallZ(x1, rz0, z1);
+          glassFront(x0, x1, z1);
           var el = document.createElement('div');
           el.className = 'o3-room static';
           el.textContent = name;
           el.style.setProperty('--rc', accent);
           layer.appendChild(el);
           // 명패는 카메라 쪽 유리 가운데
-          var pl = makePlate(x0 + 0.3, x1 - 0.3, rz1);
+          var pl = makePlate(x0 + 0.3, x1 - 0.3, z1);
           drawPlate(pl, '', name, accent, false);
           labels.push({ el: el, plate: pl, ax: '-50%', ay: '-50%' });
           Rm.place = function (az) { return { t: 'lobby', room: name, door: doorX, az: az }; };
@@ -1334,7 +1341,7 @@
 
         // 수면실: 침대 여럿(방이 넓으면 6개까지)과 머리맡 스탠드. 오래 쉬는 세션이 와서 잔다.
         var napR = lowerRoom(xC, xD, '수면실', M.napFloor, '#7a86c8');
-        W.lower = [ceoR, loungeR, napR];
+        W.lower = [elevR, ceoR, loungeR, napR];
         var nBeds = Math.max(1, Math.min(2, Math.floor((xD - xC - 1.6) / 1.5)), Math.min(6, Math.floor((xD - xC - 3.0) / 1.5))), bedZ = rz1 - 1.9;
         for (var bi = 0; bi < nBeds; bi++) {
           var bxx = xC + 1.4 + bi * 1.5;
@@ -1436,7 +1443,7 @@
         var walls = [
           { obj: curtainWall(-CW_O, -CW_O, 0, cwLenX), nx: 0, nz: -1 },
           { obj: curtainWall(maxX + CW_O, lobby.z1 + CW_O, Math.PI, cwLenX), nx: 0, nz: 1 },
-          { obj: curtainWall(-CW_O, lobby.z1 + CW_O, Math.PI / 2, cwLenZ, [lobby.z1 + CW_O - ez, 2.2]), nx: -1, nz: 0 },
+          { obj: curtainWall(-CW_O, lobby.z1 + CW_O, Math.PI / 2, cwLenZ, [lobby.z1 + CW_O - ez, 2.4]), nx: -1, nz: 0 },
           { obj: curtainWall(maxX + CW_O, -CW_O, -Math.PI / 2, cwLenZ), nx: 1, nz: 0 }
         ];
         walls.forEach(function (c) { W.cut.push(c); scene.add(c.obj); });
@@ -2206,7 +2213,14 @@
         if (a.leaving) return;
         a.leaving = true;
         a.visit = null;
+        a.rc = null;
         if (a.held) { a.held = false; if (held === a) held = null; }
+        if (a.fly) {
+          if (a.fly.ph === 'fall' || a.fly.ph === 'gone') { destroy(a); return; }   // 떨어지던 중이면 그대로 사라진다
+          a.fly = null;
+          a.obj.rotation.x = 0;
+          a.obj.rotation.z = 0;
+        }
         endBreak(a);
         var R = W.rooms[a.room];
         go(a, a.worker && R ? doorSpot(R) : W.elev);
@@ -2222,7 +2236,7 @@
       }
 
       function step(a, dt, t) {
-        if (a.held) { a.path = []; a.moving = false; }
+        if (a.held || a.fly) { a.path = []; a.moving = false; }
         if (a.path.length) {
           var w = a.path[0], dx = w.x - a.pos.x, dz = w.z - a.pos.z, d = Math.sqrt(dx * dx + dz * dz), mv = a.speed * dt;
           if (d > 0.001) turn(a, Math.atan2(dx, dz), dt * 10);
@@ -2239,7 +2253,7 @@
           a.walk += dt * a.speed * 4.6;
         } else {
           a.moving = false;
-          if (a.spot) turn(a, a.spot.yaw, dt * 7);
+          if (a.spot) turn(a, a.greetAt && Date.now() >= a.greetAt ? faceCeo(a) : a.spot.yaw, dt * 7);
         }
         if (a.fadeDir) {
           a.alpha = clamp(a.alpha + a.fadeDir * dt * 2.2, 0, 1);
@@ -2247,7 +2261,12 @@
           if (a.fadeDir > 0 && a.alpha >= 1) a.fadeDir = 0;
           if (a.fadeDir < 0 && a.alpha <= 0) { destroy(a); return; }
         }
-        a.obj.position.set(a.pos.x, a.held ? 0.45 + 0.05 * Math.sin(t * 7) : 0, a.pos.z);
+        if (a.held) hang(a, dt);
+        else if (a.fly) fly(a, dt);
+        else {
+          a.obj.position.set(a.pos.x, a.hopAt ? hopY(a) : 0, a.pos.z);
+          if (a.greetAt) { if (a.moving) a.greetAt = 0; a.obj.rotation.x = a.greetAt ? bowX(a, Date.now()) : 0; }
+        }
         a.obj.rotation.y = a.yaw;
         if (a.parts.model) modelPose(a, dt); else pose(a, dt, t);
       }
@@ -2340,7 +2359,7 @@
         });
         var cap = Math.max(1, Math.floor(restingN / 4));
         list.forEach(function (a) {
-          if (a.worker || a.leaving || !a.base || a.visit || a.held) return;
+          if (a.worker || a.leaving || !a.base || a.visit || a.held || a.fly || a.rc) return;
           var idle = resting(a, now);
           if (a.brk) {
             if (!idle) { endBreak(a); go(a, a.base); return; }
@@ -2368,10 +2387,156 @@
       function tickVisits(now) {
         Object.keys(actors).forEach(function (id) {
           var a = actors[id];
-          if (!a.visit || a.held || now < a.visit.until) return;
+          if (!a.visit || a.held || a.fly || a.rc) return;
+          if (now < a.visit.until && !(a.visit.startle && bossNear(a))) return;
+          var startle = a.visit.startle;
           a.visit = null;
-          if (!a.leaving) go(a, a.brk ? a.brk.spot : a.base || W.elev);
+          if (a.leaving) return;
+          if (startle) { a.hopAt = now; a.pose = 'stand'; a.snapPose = true; cheer(a, '😱', 1800); }   // 대표 자리에서 화들짝
+          go(a, homeOf(a));
+          if (startle) a.speed = Math.max(a.speed, 1.8);
         });
+      }
+
+      // 대표가 제자리로 걸어 돌아오며 가까워지면 대표 자리에 앉아 있던 사람이 바로 일어난다
+      function bossNear(a) {
+        var c = actors[CEO_ID];
+        return !!c && c !== a && c.moving && c.spotKey === W.ceoSeat.key && Math.abs(c.pos.x - a.pos.x) + Math.abs(c.pos.z - a.pos.z) < 3;
+      }
+      function hopY(a) {   // 화들짝: 0.45초 동안 폴짝
+        var k = (Date.now() - a.hopAt) / 450;
+        if (k >= 1) { a.hopAt = 0; return 0; }
+        return Math.sin(k * Math.PI) * 0.35;
+      }
+
+      // ---------- 대표가 방에 오면 ----------
+      // 대표가 걸어 들어오거나 손으로 방에(그 방 의자에) 놓이면, 그 방 사람들이 화들짝 일어나 대표 쪽을 보고 꾸벅 인사한 뒤 다시 앉는다.
+      var ceoRoom = null;
+      function tickCeoRoom(now) {
+        var c = actors[CEO_ID];
+        if (!c) return;
+        var R = !c.held && !c.fly && c.alpha > 0.6 ? roomAt(c.pos.x, c.pos.z) : null;
+        var n = R && c.pos.z <= R.z1 ? R.name : null;
+        if (n === ceoRoom) return;
+        ceoRoom = n;
+        if (!n) return;
+        var k = 0;
+        Object.keys(actors).forEach(function (id) {
+          var a = actors[id];
+          if (a === c || a.room !== n || a.held || a.fly || a.leaving || a.rc || a.alpha < 0.6 || a.path.length) return;
+          a.greetAt = now + 150 + (k++ % 6) * 110;   // 조금씩 엇갈려
+          a.greetN = 0;
+          a.obj.rotation.order = 'YXZ';   // 꾸벅은 몸 앞쪽으로
+        });
+      }
+      function faceCeo(a) {
+        var c = actors[CEO_ID];
+        return c ? Math.atan2(c.pos.x - a.pos.x, c.pos.z - a.pos.z) : a.spot.yaw;
+      }
+      // 화들짝(❗, 폴짝) 일어나 0.7초 뒤 꾸벅(🙇) 1.5초, 끝나면 다시 제 자세
+      function bowX(a, now) {
+        var t = now - a.greetAt;
+        if (t < 0) return 0;
+        if (t > 2800) { a.greetAt = 0; return 0; }
+        if (!a.greetN) { a.greetN = 1; a.hopAt = now; cheer(a, '❗', 900); }
+        if (t < 700) return 0;
+        if (a.greetN === 1) { a.greetN = 2; cheer(a, '🙇', 1600); }
+        return 0.45 * Math.sin(Math.min(1, (t - 700) / 1500) * Math.PI);
+      }
+
+      // ---------- 점호 (도구 막대 📣) ----------
+      // 직원이 모두 건물 오른쪽 빈 바닥에 10열 종대로 서고(카메라 쪽을 보고), 대표가 그 앞에서 마주 본다.
+      // 다 모이면(늦어도 50초) 대표가 파이팅, 직원은 박수 → 4초 뒤 해산해서 제자리로. 이 화면에서만 하는 놀이다.
+      var rc = null;
+      function rowFor(z) {
+        var best = W.rows[0];
+        W.rows.forEach(function (r) { if (Math.abs(r.zc - z) < Math.abs(best.zc - z)) best = r; });
+        return best;
+      }
+      // 오른쪽 빈 바닥: 이어진 줄들에서 방이 끝난 오른쪽 가운데 가장 넓은 네모
+      function rollCallArea() {
+        var best = null;
+        for (var i = 0; i < W.rows.length; i++) {
+          var x1 = 0;
+          for (var j = i; j < W.rows.length; j++) {
+            x1 = Math.max(x1, W.rows[j].x1);
+            var xL = x1 + 0.8, xR = W.width - 0.6, zT = W.rows[i].z0 + 0.4, zB = W.rows[j].z0 + ROOM_D + CORR - 0.3;
+            var w = xR - xL, d = zB - zT;
+            if (w > 2 && d > 3 && (!best || w * Math.min(d, 9) > best.w * Math.min(best.d, 9))) best = { xL: xL, xR: xR, zT: zT, zB: zB, w: w, d: d };
+          }
+        }
+        if (!best) best = { xL: SPINE + 1, xR: W.width - 1, zT: W.lobby.z0 + 0.2, zB: W.lobby.z0 + LANE_D - 0.2, w: W.width - SPINE - 2, d: LANE_D - 0.4 };
+        return best;
+      }
+      function rcSpot(i, x, z, yaw) {
+        return { key: 'rc:' + i, place: { t: 'corr', row: rowFor(z) }, x: x, ax: x, z: z, yaw: yaw, pose: 'stand' };
+      }
+      function startRollCall() {
+        if (!W || !W.rows.length) return;
+        var people = Object.keys(actors).map(function (id) { return actors[id]; })
+          .filter(function (a) { return !a.worker && !a.ceo && !a.leaving && a.alpha > 0.3; })
+          .sort(function (p, q) { return (p.room < q.room ? -1 : p.room > q.room ? 1 : 0) || (p.id < q.id ? -1 : 1); });
+        var A = rollCallArea(), n = Math.max(1, people.length), cols = Math.min(10, n), lines = Math.ceil(n / 10);
+        var sx = Math.min(0.8, (A.w - 0.8) / Math.max(1, cols - 1)), sz = Math.min(0.85, (A.d - 2.4) / Math.max(1, lines - 1));
+        var cx = (A.xL + A.xR) / 2, front = A.zB - 2.0, x0 = cx - sx * (cols - 1) / 2;
+        rc = { phase: 'gather', at: Date.now(), slots: [], next: 0, x0: x0, sx: sx, sz: sz, front: front, cols: cols };
+        for (var i = 0; i < people.length + 10; i++) rc.slots.push(rcSpot(i, x0 + (i % 10) * sx, front - Math.floor(i / 10) * sz, 0));
+        people.forEach(joinRollCall);
+        var ceo = actors[CEO_ID];
+        if (ceo && !ceo.held && !ceo.fly) { if (ceo.selected) selectCeo(false); ceo.visit = null; ceo.rc = rcSpot('ceo', cx, front + 1.7, Math.PI); go(ceo, ceo.rc); hurry(ceo); }
+        if (!focus) flyTo(fitBox(x0 - 1.2, x0 + sx * (cols - 1) + 1.2, front - (lines - 1) * sz - 1, front + 2.4, 2.2, 0.8, 0.9, goal.az));   // 대열만 크게
+        rcButton(true);
+        hint.textContent = '📣 점호! 모두 오른쪽 빈 곳으로 모이는 중…';
+        hint.classList.remove('fade');
+      }
+      function joinRollCall(a) {
+        if (!rc || a.held || a.fly || rc.next >= rc.slots.length) return;
+        endBreak(a);
+        a.visit = null;
+        a.rc = rc.slots[rc.next++];
+        go(a, a.rc);
+        hurry(a);
+      }
+      // 점호는 멀리 있는 사람도 12초 안팎에 닿게 종종걸음으로 (걸음 동작도 따라 빨라진다)
+      function hurry(a) {
+        var len = 0, px = a.pos.x, pz = a.pos.z;
+        a.path.forEach(function (q) { len += Math.abs(q.x - px) + Math.abs(q.z - pz); px = q.x; pz = q.z; });
+        a.speed = clamp(len / 12, 1.3, 3.2);
+      }
+      function endRollCall() {
+        if (!rc) return;
+        rc = null;
+        Object.keys(actors).forEach(function (id) {
+          var a = actors[id];
+          if (!a.rc) return;
+          a.rc = null;
+          if (!a.leaving && !a.held) go(a, homeOf(a));
+        });
+        rcButton(false);
+        hint.textContent = hintText;
+        hint.classList.add('fade');
+      }
+      function rcButton(on) { var b = tools.querySelector('[data-a="rollcall"]'); if (b) b.setAttribute('aria-pressed', String(on)); }
+      function tickRollCall(now) {
+        if (!rc) return;
+        var list = Object.keys(actors).map(function (id) { return actors[id]; }).filter(function (a) { return a.rc && !a.leaving; });
+        if (rc.phase === 'gather') {
+          var ready = list.every(function (a) { return !a.path.length && !a.held; });
+          if ((ready && now - rc.at > 1500) || now - rc.at > 50000) {
+            rc.phase = 'cheer';
+            rc.cheerAt = now;
+            var ceo = actors[CEO_ID];
+            if (ceo && ceo.rc) cheer(ceo, '💪 파이팅!', 3200);
+            hint.textContent = '💪 파이팅!';
+          }
+        } else if (rc.phase === 'cheer') {
+          // 대표가 외치고 1초 뒤 직원들이 조금씩 엇갈려 박수
+          list.forEach(function (a, i) {
+            if (a.ceo || a.clapped === rc.cheerAt) return;
+            if (now - rc.cheerAt > 900 + (i % 7) * 90) { a.clapped = rc.cheerAt; cheer(a, '👏', 2600); }
+          });
+          if (now - rc.cheerAt > 4500) endRollCall();
+        }
       }
 
       // ---------- 재미: 손 흔들기·머리 위 그림 ----------
@@ -2381,9 +2546,9 @@
         el.className = 'o3-pop';
         el.textContent = ch;
         layer.appendChild(el);
-        (a.pops = a.pops || []).push({ el: el, t0: Date.now() });
+        (a.pops = a.pops || []).push({ el: el, t0: Date.now(), life: ms > 3000 ? 3000 : 1800 });   // 긴 외침(파이팅)은 조금 더 오래
       }
-      function poseNow(a) { return a.moving ? 'walk' : a.waveUntil && a.waveUntil > Date.now() && !SITTING[a.pose] ? 'raise' : a.pose; }
+      function poseNow(a) { return a.fly ? (a.fly.ph === 'down' ? 'stand' : 'raise') : a.moving ? 'walk' : a.greetAt && Date.now() >= a.greetAt ? 'stand' : a.waveUntil && a.waveUntil > Date.now() && !SITTING[a.pose] ? 'raise' : a.pose; }
 
       // ---------- 장면 받기 ----------
       function update(s) {
@@ -2423,9 +2588,11 @@
             a.base = base;
             // 이번 차례에 커밋했으면 잠깐 손 흔들며 🎉 (현황판을 연 뒤 2분 안의 것만)
             if (p.cheer && a.cheerAt !== p.cheer) { if (a.cheerAt !== undefined || now - p.cheer < 120000) { if (now - p.cheer < 120000) cheer(a, '🎉', 3000); } a.cheerAt = p.cheer; }
-            if (a.held) { setOverlay(a, p); return; }   // 손에 들려 있는 동안은 그대로
+            if (a.held || a.fly) { setOverlay(a, p); return; }   // 손에 들려 있거나 날아가는 동안은 그대로
             var spot = base;
-            if (a.visit) spot = a.visit.spot;   // 손으로 옮겨 놓은 자리에 잠깐
+            if (rc && !a.rc && !p.worker && rc.phase === 'gather') joinRollCall(a);   // 점호 중에 들어온 사람도 줄에
+            if (a.rc) spot = a.rc;   // 점호 자리
+            else if (a.visit) spot = a.visit.spot;   // 손으로 옮겨 놓은 자리에 잠깐
             else if (a.brk) { if (resting(a, now)) spot = a.brk.spot; else endBreak(a); }
             if (fresh && !first) {
               a.greet = true;   // 엘리베이터에서 걸어와 자리에 닿으면 손 흔들기
@@ -2567,11 +2734,31 @@
 
       // ---------- 손 (도구 막대 ✋) ----------
       var grabMode = false, held = null;
+      // 뒷목을 잡혀 매달린 사람: 목(손 끝)을 축으로 한 진자. 손이 빨리 움직이면 몸이 뒤처졌다가 덜렁덜렁 흔들린다.
+      var HANG_L = 1.3, HANG_UP = 0.55;   // 발에서 목까지, 들어 올린 높이
+      function hang(a, dt) {
+        var H = a.hang || (a.hang = { th: 0, vth: 0, be: 0, vbe: 0, hx: a.pos.x, hz: a.pos.z, vx: 0, vz: 0 });
+        var d = Math.max(dt, 1 / 120), hx = a.pos.x, hz = a.pos.z;
+        var vx = (hx - H.hx) / d, vz = (hz - H.hz) / d;
+        var ax = clamp((vx - H.vx) / d, -60, 60), az = clamp((vz - H.vz) / d, -60, 60);
+        H.hx = hx; H.hz = hz; H.vx = vx; H.vz = vz;
+        var k = 9.8 / HANG_L, c = 1.1;
+        H.vth += (-k * Math.sin(H.th) - ax / HANG_L * Math.cos(H.th) - c * H.vth) * d;
+        H.vbe += (-k * Math.sin(H.be) - az / HANG_L * Math.cos(H.be) - c * H.vbe) * d;
+        H.th = clamp(H.th + H.vth * d, -1.1, 1.1);
+        H.be = clamp(H.be + H.vbe * d, -1.1, 1.1);
+        a.yaw = 0;   // 매달리면 카메라 쪽을 본다
+        a.obj.position.set(hx + HANG_L * Math.sin(H.th), HANG_UP + HANG_L - HANG_L * Math.cos(H.th) * Math.cos(H.be), hz + HANG_L * Math.cos(H.th) * Math.sin(H.be));
+        a.obj.rotation.z = H.th;
+        a.obj.rotation.x = -H.be;
+      }
+      // 돌아갈 자리: 대표는 대표실 의자, 쉬던 사람은 쉬던 곳, 아니면 제자리
+      function homeOf(a) { return a.ceo ? W.ceoSeat : a.brk ? a.brk.spot : a.base || W.elev; }
       function actorAt(px, py) {
         var best = null, bd = 1e9;
         Object.keys(actors).forEach(function (id) {
           var a = actors[id], sc = a.scr;
-          if (!sc || a.alpha < 0.5 || a.ceo || a.leaving) return;
+          if (!sc || a.alpha < 0.5 || a.leaving) return;
           var hw = Math.max(TOUCH ? 20 : 12, sc.ppm * 0.4), hb = Math.max(TOUCH ? 34 : 26, sc.ppm * (SITTING[a.pose] ? 1.0 : 1.5));
           var dx = Math.abs(px - sc.x), dy = py - sc.y;
           if (dx > hw || dy < -14 || dy > hb) return;
@@ -2585,8 +2772,12 @@
         a.path = [];
         a.moving = false;
         a.visit = null;
+        a.hang = null;
+        if (a.fly) { a.fly = null; a.obj.rotation.x = 0; }   // 날아가는 중에 다시 잡았다
+        if (a.alpha < 1) { a.alpha = 1; setAlpha(a); }
         endBreak(a);
-        a.pose = 'raise';   // 들리면 손을 흔든다
+        if (a.ceo && a.selected) selectCeo(false);
+        a.pose = 'stand';   // 축 늘어져 매달린다
         a.snapPose = true;
       }
       // 놓은 자리 가까이(0.85m 안)의 빈 의자·쉼터 자리
@@ -2609,13 +2800,18 @@
         });
         return best;
       }
-      function dropHeld() {
+      function dropHeld(vel) {
         var a = held;
         held = null;
         if (!a) return;
         a.held = false;
-        var now = Date.now(), seat = seatNear(a.pos.x, a.pos.z, a);
-        if (seat && a.base && seat.key === a.base.key) { placeAt(a, a.base); return; }   // 제자리에 놓으면 그대로
+        // 휘두르다 놓으면 날아가고, 건물 밖에서 놓으면 떨어진다
+        if (vel || outside(a.pos.x, a.pos.z)) { launch(a, vel); a.hang = null; return; }
+        a.hang = null;
+        a.obj.rotation.x = 0;
+        a.obj.rotation.z = 0;
+        var now = Date.now(), seat = seatNear(a.pos.x, a.pos.z, a), home = homeOf(a);
+        if (seat && seat.key === home.key) { placeAt(a, home); return; }   // 제자리에 놓으면 그대로
         if (seat) {
           // 의자에 앉힌다. 다른 방 의자면 잠깐(25초) 앉아 있다가 일어나서 제 방으로 돌아간다.
           var other = !!(seat.R && seat.R.name !== a.room);
@@ -2626,13 +2822,116 @@
           cheer(a, other ? '☕' : '💺', 1600);
           return;
         }
-        // 의자가 아니면 그 자리에 잠깐 서 있다가 돌아간다 (걸을 수 없는 곳이면 바로 제자리로)
+        // 대표 자리에 놓으면 잠깐 앉아 있다가(대표가 걸어오면 바로) 화들짝 일어나 돌아간다
         var fs = spotAt(a.pos.x, a.pos.z);
-        if (fs && fs !== W.ceoSeat) {
-          var st = Object.assign({}, fs, { key: 'visit:floor', yaw: a.yaw, pose: 'stand' });
-          placeAt(a, st);
-          a.visit = { spot: st, until: now + 4000 };
-        } else placeAt(a, a.base || W.elev);
+        if (fs === W.ceoSeat) {
+          if (a.ceo) { placeAt(a, home); return; }
+          var boss = actors[CEO_ID];
+          if (boss && !boss.held && !boss.fly && !boss.rc && boss.spotKey === W.ceoSeat.key) {
+            // 앉아 있던 대표는 의자 옆으로 비켜 섰다가 5초 뒤 돌아와 앉는다
+            if (boss.selected) selectCeo(false);
+            var aside = Object.assign({}, spotAt(W.ceoSeat.x + 1.1, W.ceoSeat.z, true) || W.ceoSeat, { key: 'visit:aside', yaw: -Math.PI / 2, pose: 'stand' });
+            go(boss, aside);
+            boss.visit = { spot: aside, until: now + 5500 };
+            cheer(boss, '😳', 1500);
+          }
+          var cs = Object.assign({}, W.ceoSeat, { key: 'visit:' + W.ceoSeat.key });
+          placeAt(a, cs);
+          a.visit = { spot: cs, until: now + 3500, startle: true };
+          cheer(a, '😎', 1500);
+          return;
+        }
+        // 의자가 아니면 그 자리에 잠깐 서 있다가 돌아간다
+        var st = Object.assign({}, floorAt(a.pos.x, a.pos.z, fs), { key: 'visit:floor', yaw: a.yaw, pose: 'stand' });
+        placeAt(a, st);
+        a.visit = { spot: st, until: now + 4000 };
+      }
+      // 바닥 자리: 걸을 수 있는 곳이면 그 자리, 아니면(오른쪽 빈 바닥 등) 가까운 복도·로비 길로 오가게
+      function floorAt(x, z, fs) {
+        if (fs === undefined) fs = spotAt(x, z, true);
+        return fs || { key: 'floor', place: z >= W.lobby.z0 ? { t: 'lobby' } : { t: 'corr', row: rowFor(z) }, x: x, ax: x, z: z, yaw: 0, pose: 'stand' };
+      }
+      function outside(x, z) { return x < -CW_O || x > W.width + CW_O || z < -CW_O || z > W.depth + CW_O; }
+      // 놓기 직전 손 빠르기 (멈췄다 놓으면 없음). 화면에서도 빨리 휘둘렀을 때만 던진 것으로 본다.
+      function handVel(tr) {
+        if (!tr || tr.length < 2) return null;
+        var last = tr[tr.length - 1], first = last;
+        if (performance.now() - last.t > 90) return null;
+        for (var i = tr.length - 2; i >= 0; i--) { first = tr[i]; if (last.t - first.t > 70) break; }
+        var s = (last.t - first.t) / 1000;
+        if (s < 0.012) return null;
+        var vx = (last.x - first.x) / s, vz = (last.z - first.z) / s, v = Math.hypot(vx, vz);
+        if (Math.hypot(last.sx - first.sx, last.sy - first.sy) / s < 900 || v < 3) return null;
+        var k = Math.min(1, 14 / v);
+        return { x: vx * k, z: vz * k };
+      }
+
+      // ---------- 던지기·떨어지기 ----------
+      // 휘두르다 놓으면 포물선으로 날아가 바닥에 한 번 튀고 대자로 뻗었다가, 일어나 어질어질(💫) 한 뒤 제자리로.
+      // 건물 밖으로 나가면 허우적대며 "으아아아!" 떨어지고, 10초 뒤 엘리베이터로 올라와 제자리로 간다.
+      var GRAV = 13, BODY_C = 0.8;   // 중력, 발에서 몸 가운데까지
+      function launch(a, vel) {
+        var v = vel || { x: 0, z: 0 }, sp = Math.hypot(v.x, v.z), o = a.obj.position;
+        a.fly = { ph: 'air', x: o.x, y: o.y + BODY_C, z: o.z, vx: v.x, vy: sp ? 2.5 + sp * 0.28 : 0.5, vz: v.z, rx: 0, rz: a.obj.rotation.z, spin: sp ? 5 + sp * 0.5 : 0, bounce: 0, t0: Date.now() };
+        a.obj.rotation.order = 'YXZ';   // 날아가는 쪽으로 앞구르기
+        a.obj.rotation.x = 0;
+        if (sp) a.yaw = Math.atan2(v.x, v.z);
+        a.waveUntil = 0;
+      }
+      function fly(a, dt) {
+        var F = a.fly, now = Date.now();
+        if (F.ph === 'gone') { if (now > F.until) backByElevator(a); return; }
+        if (F.ph === 'down') {   // 바닥에 대자로 뻗었다
+          F.rx += (-Math.PI / 2 - F.rx) * Math.min(1, dt * 14);
+          F.y += (0.16 - F.y) * Math.min(1, dt * 14);
+          F.rz *= Math.max(0, 1 - dt * 8);
+          if (now > F.until) { getUp(a); return; }
+        } else {
+          F.vy -= GRAV * dt;
+          F.x += F.vx * dt;
+          F.y += F.vy * dt;
+          F.z += F.vz * dt;
+          F.rx += F.spin * dt;
+          F.rz *= Math.max(0, 1 - dt * 5);
+          if (F.ph === 'air' && outside(F.x, F.z)) { F.ph = 'fall'; F.t0 = now; cheer(a, '으아아아!', 3200); }
+          if (F.ph === 'air' && F.y <= 0.45 && F.vy < 0) {
+            if (!F.bounce && F.vy < -4) { F.bounce = 1; F.y = 0.45; F.vy = -F.vy * 0.3; F.vx *= 0.45; F.vz *= 0.45; F.spin *= 0.5; }
+            else { F.ph = 'down'; F.until = now + 1400; F.rx = Math.atan2(Math.sin(F.rx), Math.cos(F.rx)); }
+          }
+          if (F.ph === 'fall') {
+            F.rz = Math.sin(now / 90) * 0.3;   // 허우적
+            var k = (now - F.t0) / 1000;
+            if (k > 1.6) { a.alpha = Math.max(0, 1 - (k - 1.6) / 0.6); setAlpha(a); }
+            if (a.alpha <= 0) { F.ph = 'gone'; F.until = now + 10000; return; }
+          }
+        }
+        // 몸 가운데(F)를 축으로 돈 모습이 되게 발(원점) 자리를 옮긴다
+        var c = Math.cos(F.rx), s = Math.sin(F.rx);
+        a.obj.position.set(F.x - BODY_C * Math.sin(a.yaw) * s, F.y - BODY_C * c, F.z - BODY_C * Math.cos(a.yaw) * s);
+        a.obj.rotation.x = F.rx;
+        a.obj.rotation.z = F.rz;
+        a.pos.x = F.x;
+        a.pos.z = F.z;
+      }
+      function getUp(a) {
+        a.fly = null;
+        a.obj.rotation.x = 0;
+        a.obj.rotation.z = 0;
+        var st = Object.assign({}, floorAt(a.pos.x, a.pos.z), { key: 'visit:floor', x: a.pos.x, z: a.pos.z, yaw: a.yaw, pose: 'slump' });
+        placeAt(a, st);
+        a.visit = { spot: st, until: Date.now() + 2800 };
+        cheer(a, '💫', 2600);
+      }
+      function backByElevator(a) {
+        a.fly = null;
+        a.obj.rotation.x = 0;
+        a.obj.rotation.z = 0;
+        placeAt(a, W.elev);
+        a.alpha = 0;
+        setAlpha(a);
+        a.fadeDir = 1;
+        go(a, homeOf(a));
+        cheer(a, '😅', 2400);
       }
 
       // ---------- 입력 ----------
@@ -2677,7 +2976,14 @@
           if (!drag.moved && Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < 6) return;
           if (!drag.moved) { drag.moved = true; startHold(drag.a); }
           var gp = ground(p.x, p.y);
-          if (gp && held) { held.pos.x = clamp(gp.x, 0.2, W.width - 0.2); held.pos.z = clamp(gp.z, 0.2, W.depth - 0.2); }
+          if (gp && held) {
+            // 건물 밖(유리 너머)까지 들고 나갈 수 있다. 거기서 놓으면 떨어진다.
+            held.pos.x = clamp(gp.x, -8, W.width + 8);
+            held.pos.z = clamp(gp.z, -8, W.depth + 8);
+            var tr = drag.trail || (drag.trail = []);
+            tr.push({ t: performance.now(), x: held.pos.x, z: held.pos.z, sx: p.x, sy: p.y });
+            if (tr.length > 8) tr.shift();
+          }
           return;
         }
         if (!drag.moved && Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < 6) return;
@@ -2696,7 +3002,12 @@
         }
         if (!left.length) {
           if (drag && drag.mode === 'grab') {
-            if (drag.moved) dropHeld();
+            if (drag.moved) {
+              // 놓는 순간 자리도 손 빠르기에 넣는다
+              var ur = canvas.getBoundingClientRect(), ux = e.clientX - ur.left, uy = e.clientY - ur.top, ug = held && drag.trail && ground(ux, uy);
+              if (ug) drag.trail.push({ t: performance.now(), x: clamp(ug.x, -8, W.width + 8), z: clamp(ug.z, -8, W.depth + 8), sx: ux, sy: uy });
+              dropHeld(handVel(drag.trail));
+            }
             else if (e.type === 'pointerup') { drag.a.lastPet = Date.now(); cheer(drag.a, '❤', 2200); }   // 그냥 누르면 쓰다듬기
             drag = null;
             return;
@@ -2723,11 +3034,12 @@
         else if (act === 'in') goal.dist = Math.max(2.5, goal.dist / 1.35);
         else if (act === 'out') goal.dist = Math.min(Math.max(maxDist, 20), goal.dist * 1.35);
         else if (act === 'home') { if (focus) host.back(); else flyTo(overview()); }
+        else if (act === 'rollcall') { if (rc) endRollCall(); else startRollCall(); return; }
         else if (act === 'grab') {
           grabMode = !grabMode;
           b.setAttribute('aria-pressed', String(grabMode));
           container.classList.toggle('o3-grabbing', grabMode);
-          hint.textContent = grabMode ? '손: 사람을 끌어 의자에 놓으면 앉아요 · 그냥 누르면 쓰다듬기 · ✋ 를 다시 누르면 끝' : hintText;
+          hint.textContent = grabMode ? '손: 끌어서 의자·침대에 놓기 · 휘두르며 놓으면 날아가요 · 그냥 누르면 쓰다듬기 · ✋ 다시 누르면 끝' : hintText;
           hint.classList.toggle('fade', !grabMode);
           return;
         }
@@ -2861,9 +3173,9 @@
         hint.classList.toggle('fade', !on);
       }
       // 누른 바닥 자리를 걸어갈 수 있는 곳(방 통로, 탕비실, 복도, 로비, 아래쪽 방)으로 맞춘다
-      function spotAt(x, z) {
+      function spotAt(x, z, noSeat) {
         var key = 'ceo:' + Math.round(x * 10) + ':' + Math.round(z * 10), seat = W.ceoSeat;
-        if (Math.abs(x - seat.x) < 0.9 && Math.abs(z - seat.z) < 0.9) return seat;
+        if (!noSeat && Math.abs(x - seat.x) < 0.9 && Math.abs(z - seat.z) < 0.9) return seat;
         var R = roomAt(x, z);
         if (R && z <= R.z1) {
           var lane = z < R.zTable ? 'back' : 'front', rx = clamp(x, R.x0 + 0.4, R.x1 - 0.4);
@@ -3033,14 +3345,15 @@
             var nowP = Date.now();
             a.pops = a.pops.filter(function (q) {
               var age = nowP - q.t0;
-              if (age > 1800 || !sp) { q.el.remove(); return false; }
-              put(q.el, sp.x, sp.y - 8 - age * 0.025, '-50%', '-100%');
-              q.el.style.opacity = String(Math.min(1, (1800 - age) / 500));
+              if (age > q.life || !sp) { q.el.remove(); return false; }
+              put(q.el, sp.x, sp.y - 8 - Math.min(age, 1800) * 0.025, '-50%', '-100%');
+              q.el.style.opacity = String(Math.min(1, (q.life - age) / 500));
               return true;
             });
           }
           var b = a.p.bubble, want = on && !a.worker && !!a.bubKey && b && b.kind !== 'mini' && a.alpha > 0.6;
           if (want && focus) want = inFocus || b.kind === 'alert';
+          else if (want && a.rc) want = b.kind === 'alert';   // 점호 줄에서는 급한 말풍선만
           else if (want && ppm < 12) want = b.kind === 'alert' || b.t === latest;
           if (!want) { vis(a.bub, false); return; }
           var big = inFocus;
@@ -3106,6 +3419,8 @@
         stepCamera(dt);
         tickBreaks(Date.now());
         tickVisits(Date.now());
+        tickRollCall(Date.now());
+        tickCeoRoom(Date.now());
         var sec = t / 1000;
         Object.keys(actors).forEach(function (id) { if (actors[id]) step(actors[id], dt, sec); });
         if (city) city.tick(dt);
@@ -3115,13 +3430,27 @@
           R.front.visible = focus !== n;
           R.plate.off = focus === n;
         });
-        // 침대에 누가 누워 자면 볼록한 이불을 덮고, 아니면 개어 둔 이불
+        // 침대에 누가 누워 자면 볼록한 이불을 덮고, 아니면 개어 둔 이불 (쉬러 온 사람이든 손으로 놓은 사람이든)
+        var lying = {};
+        Object.keys(actors).forEach(function (id) { var o = actors[id]; if (o.spotKey && o.pose === 'sleep' && !o.moving && !o.held) lying[o.spotKey.replace(/^visit:/, '')] = o; });
         W.breaks.forEach(function (b) {
           if (!b.cover) return;
-          var sa = b.by && actors[b.by];
-          var on = !!sa && !sa.moving && sa.pose === 'sleep' && Math.abs(sa.pos.x - b.x) + Math.abs(sa.pos.z - b.z) < 0.3;
+          var sa = lying[b.key];
+          var on = !!sa && Math.abs(sa.pos.x - b.x) + Math.abs(sa.pos.z - b.z) < 0.3;
           if (b.cover.draped.visible !== on) { b.cover.draped.visible = on; b.cover.folded.visible = !on; }
         });
+        // 엘리베이터 문: 누가 타거나 내리는 동안 열린다
+        var E = W.elevDoor;
+        if (E) {
+          var want = 0;
+          for (var eid in actors) {
+            var eo = actors[eid];
+            if (Math.abs(eo.pos.x - W.elev.x) < 1.1 && Math.abs(eo.pos.z - W.elev.z) < 1.0 && (eo.fadeDir || eo.moving)) { want = 1; break; }
+          }
+          E.open += (want - E.open) * Math.min(1, dt * 5);
+          E.doors[0].position.z = E.z - 0.31 - E.open * 0.52;
+          E.doors[1].position.z = E.z + 0.31 + E.open * 0.52;
+        }
         var dirX = Math.sin(view.az), dirZ = Math.cos(view.az);
         W.cut.forEach(function (c) { c.obj.visible = dirX * c.nx + dirZ * c.nz <= 0.25; });
         fitPlates();
