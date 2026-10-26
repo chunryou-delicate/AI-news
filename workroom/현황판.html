@@ -608,6 +608,10 @@
           <ul class="list" id="busy"></ul>
         </section>
         <section class="card">
+          <h2>대기 중 <span class="n" id="idleN"></span></h2>
+          <ul class="list" id="idleList"></ul>
+        </section>
+        <section class="card">
           <h2>회의록 <span class="n" id="treeN"></span></h2>
           <ul class="min-tree" id="minTree"></ul>
         </section>
@@ -1528,6 +1532,12 @@
     var busy = sessions.filter(function (s) { return s.state === 'working'; }).sort(function (a, b) { return a.stateSince - b.stateSince; });
     document.getElementById('busyN').textContent = busy.length ? busy.length + '개' : '';
     document.getElementById('busy').innerHTML = busy.length ? busy.map(function (s) { return itemHtml(s); }).join('') : '<li class="empty-note">일하는 AI가 없어요.</li>';
+    // 열어만 두고 아직 일을 안 받은 세션 (지시 보내기로 바로 일을 줄 수 있게 눌러서 세션 창을 연다). 이 컴퓨터 것이 먼저.
+    var idle = sessions.filter(function (s) { return s.state === 'idle'; }).sort(function (a, b) {
+      return (a.machine ? 1 : 0) - (b.machine ? 1 : 0) || String(a.room).localeCompare(String(b.room)) || (b.stateSince || 0) - (a.stateSince || 0);
+    });
+    document.getElementById('idleN').textContent = idle.length ? idle.length + '개' : '';
+    document.getElementById('idleList').innerHTML = idle.length ? idle.map(function (s) { return itemHtml(s); }).join('') : '<li class="empty-note">대기 중인 세션이 없어요.</li>';
 
     if (openId) fillSheet(openId);
   }
