@@ -34,7 +34,7 @@
     var ROOM_D = 6.2;                // 방 깊이 (뒷벽 → 유리 앞벽)
     var CORR = 2.6;                  // 방 앞 복도 폭
     var SPINE0 = 2.8;                // 왼쪽 세로 복도 폭
-    var SIDE_W = 2.0;                // 컴퓨터가 여럿이면 복도 왼쪽에 두는 층 표시 띠 (층마다 세로 색 줄 + 눕힌 층 이름·동기화)
+    var SIDE_W = 2.6;                // 컴퓨터가 여럿이면 복도 왼쪽에 두는 층 표시 띠 (층마다 세로 색 줄 + 눕힌 층 이름·동기화)
     var SPINE = SPINE0;              // 방이 시작하는 x (층 표시 띠가 있으면 그만큼 오른쪽으로)
     function spineX() { return SPINE - SPINE0 / 2; }   // 세로 복도 가운데 (사람이 걷는 줄)
     var ZONE_D = 3.4;                // 컴퓨터마다 층 안내 띠 (바닥에 층 이름을 크게 쓴다)
@@ -589,12 +589,12 @@
         var P = PAL, trash = [];
         function lam(c) { var m = new T.MeshLambertMaterial({ color: c }); trash.push(m); return m; }
         function basic(c) { var m = new T.MeshBasicMaterial({ color: c }); trash.push(m); return m; }
-        function zoneSideWidth(name) {
+        function zoneSideWidth(name) {   // 두 줄 중 긴 쪽 (상태는 가장 긴 '999분 전 동기화' 기준)
           var x = document.createElement('canvas').getContext('2d');
-          x.font = '800 132px ' + FONT;
+          x.font = '800 150px ' + FONT;
           var nw = x.measureText(name + ' 층').width;
-          x.font = '700 76px ' + FONT;
-          return Math.ceil(nw + 40 + x.measureText('999분 전 동기화').width + 32);
+          x.font = '700 84px ' + FONT;
+          return Math.ceil(Math.max(nw, x.measureText('999분 전 동기화').width) + 48);
         }
         // 다시 그리는 바닥 글씨 (층 옆 '이 컴퓨터' / 'n분 전 동기화')
         function zoneCanvas(w, h) {
@@ -866,14 +866,14 @@
           box(maxX - SIDE_W, 0.016, 0.12, edge, (maxX + SIDE_W) / 2, 0.008, zn.z1 - 0.2);
           // 글씨는 띠 뒤쪽에 쓴다 (앞쪽은 카메라에서 보면 바로 앞 방 뒷벽에 가린다)
           var paint = floorText(zn.name + ' 층', zn.color), span = maxX - SPINE - 1;
-          var th = Math.min(ZONE_D - 1.4, span / paint.aspect), tw = th * paint.aspect;
+          var th = Math.min(1.45, ZONE_D - 1.4, span / paint.aspect), tw = th * paint.aspect;
           for (var tx = SPINE + 0.6; tx === SPINE + 0.6 || tx + tw <= maxX - 0.4; tx += tw + 9) {
             var tm = mesh(G.plane, paint.mat, tw, th, 1, tx + tw / 2, 0.02, zn.z0 + 0.35 + th / 2, keep);
             tm.rotation.x = -Math.PI / 2;
             tm.receiveShadow = true;
           }
           zn.band = zoneCanvas(1024, 128);
-          var sh = Math.min(0.9, th * 0.5), sw = sh * 8;
+          var sh = Math.min(0.75, th * 0.5), sw = sh * 8;
           var sm = mesh(G.plane, zn.band.mat, sw, sh, 1, SPINE + 0.6 + tw + 0.25 + sw / 2, 0.021, zn.z0 + 0.35 + th * 0.62, keep);
           sm.rotation.x = -Math.PI / 2;
           // 세로 줄: 그 층의 띠부터 다음 층(또는 로비) 앞까지
@@ -882,9 +882,9 @@
           box(0.1, 0.016, len, edge, 0.17, 0.008, mz);
           box(0.1, 0.016, len, edge, SIDE_W - 0.17, 0.008, mz);
           // 캔버스 길이는 층 이름 + 가장 긴 상태 글씨에 맞춘다 (남는 자리 없이 글씨를 크게)
-          zn.side = zoneCanvas(zoneSideWidth(zn.name), 192);
-          var vh = SIDE_W - 0.55, vw = vh * zn.side.c.width / 192;
-          if (vw > len - 0.4) { vw = len - 0.4; vh = vw * 192 / zn.side.c.width; }
+          zn.side = zoneCanvas(zoneSideWidth(zn.name), 288);
+          var vh = SIDE_W - 0.5, vw = vh * zn.side.c.width / 288;
+          if (vw > len - 0.4) { vw = len - 0.4; vh = vw * 288 / zn.side.c.width; }
           var vm = mesh(G.plane, zn.side.mat, vw, vh, 1, SIDE_W / 2, 0.021, mz, keep);
           vm.rotation.set(-Math.PI / 2, 0, Math.PI / 2);   // 글씨가 앞(카메라 쪽)에서 안쪽으로 읽히고, 글자 위가 바깥(왼쪽)을 본다
           drawZoneTags(zn, zn.self ? '이 컴퓨터' : '');
@@ -1970,25 +1970,21 @@
         bx.textBaseline = 'middle';
         bx.fillText(status, 8, b.c.height / 2 + 4);
         b.tex.needsUpdate = true;
-        // 세로 줄: 층 이름(크게) + 상태(작게)를 한 줄로, 넘치면 줄여서 가운데에
-        var v = zn.side, vx = v.x, name = zn.name + ' 층', k = 1;
+        // 세로 줄: 층 이름(크게, 바깥 줄)과 상태(작게, 안쪽 줄) 두 줄, 가운데 맞춤
+        var v = zn.side, vx = v.x, name = zn.name + ' 층';
         vx.clearRect(0, 0, v.c.width, v.c.height);
         vx.textBaseline = 'middle';
-        vx.font = '800 132px ' + FONT;
-        var nw = vx.measureText(name).width;
-        vx.font = '700 76px ' + FONT;
-        var stw = status ? vx.measureText(status).width + 40 : 0;
-        if (nw + stw + 24 > v.c.width) k = v.c.width / (nw + stw + 24);
-        var x0 = (v.c.width - (nw + stw) * k) / 2, mid = v.c.height / 2 + 6;
+        vx.textAlign = 'center';
         vx.fillStyle = zn.color;
-        vx.font = '800 ' + Math.floor(132 * k) + 'px ' + FONT;
-        vx.fillText(name, x0, mid);
+        vx.font = '800 150px ' + FONT;
+        vx.fillText(name, v.c.width / 2, 100);
         if (status) {
           vx.globalAlpha = 0.85;
-          vx.font = '700 ' + Math.floor(76 * k) + 'px ' + FONT;
-          vx.fillText(status, x0 + (nw + 40) * k, mid + 14 * k);
+          vx.font = '700 84px ' + FONT;
+          vx.fillText(status, v.c.width / 2, 228);
           vx.globalAlpha = 1;
         }
+        vx.textAlign = 'left';
         v.tex.needsUpdate = true;
       }
 
