@@ -11,7 +11,8 @@
 // 지시 보내기: 현황판 세션 창에서 보낸 말을 send.js 로 그 세션 터미널에 넣는다 (다른 컴퓨터 세션은 동기화로).
 //   열쇠가 맞고 X-Workroom: send 머리글이 붙은 POST 만 받는다 (다른 사이트가 몰래 보내지 못하게).
 //   Orca 가 느린 컴퓨터에서도 서버가 멈추지 않게 send.js 를 따로 띄운 프로세스로 한 번에 하나씩 돌린다.
-//   server.json 에 "send": false 를 두면 끈다.
+// 사람 고용(/__hire): 방 패널에서 이름을 적으면 send.js --hire 로 그 방 프로젝트 폴더에 새 Claude 세션을 띄운다 (같은 열쇠·머리글·순서).
+//   server.json 에 "send": false 를 두면 끈다. (고용도 함께 꺼진다)
 
 const http = require('http');
 const fs = require('fs');
@@ -100,27 +101,32 @@ function readBody(req, max) {
 function sendJson(res, headers, code, obj) {
   res.writeHead(code, Object.assign({}, headers, { 'Content-Type': 'application/json; charset=utf-8' })).end(JSON.stringify(obj));
 }
-// 지시 보내기는 한 번에 하나씩, 따로 띄운 node 프로세스로 (기다리는 동안에도 현황판 파일은 계속 나간다)
+// 지시 보내기·사람 고용은 한 번에 하나씩, 따로 띄운 node 프로세스로 (기다리는 동안에도 현황판 파일은 계속 나간다)
 let sendChain = Promise.resolve();
-function sendInChild(sid, text) {
+function sendInChild(args, what) {
   const job = () => new Promise((resolve) => {
     let out = '', done = false, timer = null, child = null;
     const finish = (r) => { if (done) return; done = true; clearTimeout(timer); resolve(r); };
     try {
-      child = require('child_process').spawn(process.execPath, [path.join(ROOT, 'send.js'), '--json', sid, text], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-    } catch (_) { finish({ ok: false, error: '보내기 프로세스를 띄우지 못했어요' }); return; }
-    timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish({ ok: false, error: '보내기가 2분 안에 끝나지 않았어요 (Orca 가 느려요)' }); }, 120 * 1000);
+      child = require('child_process').spawn(process.execPath, [path.join(ROOT, 'send.js')].concat(args), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (_) { finish({ ok: false, error: `${what} 프로세스를 띄우지 못했어요` }); return; }
+    timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish({ ok: false, error: `${what}가 2분 안에 끝나지 않았어요 (Orca 가 느려요)` }); }, 120 * 1000);
     child.stdout.on('data', (c) => { out += c; });
-    child.on('error', () => finish({ ok: false, error: '보내기 프로세스를 띄우지 못했어요' }));
+    child.on('error', () => finish({ ok: false, error: `${what} 프로세스를 띄우지 못했어요` }));
     // 'close' 는 하위 프로세스가 파이프를 쥐고 있으면 늦게 오므로 'exit' 에서 마무리한다
     child.on('exit', () => setTimeout(() => {
       const last = out.trim().split(/\r?\n/).pop();
-      try { finish(JSON.parse(last)); } catch (_) { finish({ ok: false, error: '보내지 못했어요' }); }
+      try { finish(JSON.parse(last)); } catch (_) { finish({ ok: false, error: `${what}를 하지 못했어요` }); }
     }, 100));
   });
   const p = sendChain.then(job, job);
   sendChain = p.catch(() => {});
   return p;
+}
+// 다른 컴퓨터로 가는 것은 바로 동기화를 한 번 돌려 빨리 올린다
+function syncSoon(r) {
+  if (!r.ok || r.status !== 'queued') return;
+  try { require('child_process').spawn(process.execPath, [path.join(ROOT, 'sync.js')], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (_) {}
 }
 
 function handleSend(cfg, req, res, headers, pathname, u) {
@@ -138,15 +144,16 @@ function handleSend(cfg, req, res, headers, pathname, u) {
   readBody(req, 8192).then((body) => {
     let j;
     try { j = JSON.parse(body); } catch (_) { sendJson(res, headers, 400, { ok: false, error: '잘못된 요청' }); return; }
+    if (pathname === '/__hire') {
+      // 사람 고용: 그 방 프로젝트 폴더에 새 Claude 세션 (이름 = 세션 이름·Orca 탭 제목)
+      const room = String(j.room || '').slice(0, 120), name = String(j.name || '').slice(0, 80);
+      if (!room || !name.trim()) { sendJson(res, headers, 409, { ok: false, error: '방과 이름이 필요해요' }); return; }
+      sendInChild(['--hire', '--json', room, name], '고용').then((r) => { syncSoon(r); sendJson(res, headers, r.ok ? 200 : 409, r); });
+      return;
+    }
     const sid = String(j.sid || ''), text = String(j.text || '').slice(0, 2000);
     if (!sid || !text.trim()) { sendJson(res, headers, 409, { ok: false, error: '보낼 말이 비어 있어요' }); return; }
-    sendInChild(sid, text).then((r) => {
-      // 다른 컴퓨터로 가는 것은 바로 동기화를 한 번 돌려 빨리 올린다
-      if (r.ok && r.status === 'queued') {
-        try { require('child_process').spawn(process.execPath, [path.join(ROOT, 'sync.js')], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (_) {}
-      }
-      sendJson(res, headers, r.ok ? 200 : 409, r);
-    });
+    sendInChild(['--json', sid, text], '보내기').then((r) => { syncSoon(r); sendJson(res, headers, r.ok ? 200 : 409, r); });
   }, () => sendJson(res, headers, 413, { ok: false, error: '너무 길어요' }));
 }
 
@@ -172,7 +179,7 @@ function serve(cfg) {
       setTimeout(() => process.exit(0), 100);
       return;
     }
-    if (pathname === '/__send' || pathname === '/__sends') { handleSend(cfg, req, res, headers, pathname, u); return; }
+    if (pathname === '/__send' || pathname === '/__sends' || pathname === '/__hire') { handleSend(cfg, req, res, headers, pathname, u); return; }
     if (pathname === '/') {
       // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
       res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();

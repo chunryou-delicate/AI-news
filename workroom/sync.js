@@ -221,7 +221,7 @@ function receiveSends(cfg, own, ref, meta) {
       let r;
       if (cfg.acceptSend === false) r = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
       else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) r = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
-      else r = sendMod.deliverLocal(m.sid, m.text);
+      else r = sendMod.deliverInbound(m);
       done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid };
       changed = true;
     }
