@@ -537,6 +537,14 @@
   @container (max-width: 440px) { .dock-tab .tl-long { display: none; } .dock-tab .tl-short { display: inline; } .dock-tab { padding: 8px 2px; font-size: 12.5px; gap: 3px; } .dock-tab b { min-width: 16px; padding: 0 4px; } }
   body.file-mode .server-only { display: none !important; }
   body.file-mode .server-only-note { display: block !important; }
+  /* 공유 보기(share.js): 구경만. 바꾸거나 보내는 단추·입력은 모두 감춘다 */
+  .share-badge { display: none; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; vertical-align: middle; background: rgba(127, 127, 127, .18); color: var(--muted, #888); }
+  body.share-mode .share-badge { display: inline-block; }
+  body.share-mode .ack, body.share-mode .grp-ack, body.share-mode [data-qr-open], body.share-mode .qr-input,
+  body.share-mode #sendBox, body.share-mode #hireBtn, body.share-mode #hireBox, body.share-mode #renameBtn, body.share-mode #renameRow,
+  body.share-mode #fireBtn, body.share-mode .staff-tools, body.share-mode #taskForm, body.share-mode #schedForm, body.share-mode .task-assign,
+  body.share-mode [data-task-act], body.share-mode [data-sched-act], body.share-mode [data-perm], body.share-mode [data-unfire],
+  body.share-mode [data-clean-act], body.share-mode [data-up-send] { display: none !important; }
   /* 카드에서 바로 답하기 (두 번 눌러야 보낸다) */
   .todo-li.has-qr .item { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
   .todo-li.has-qr .row3, .todo-li.has-qr .row2:last-child { padding-right: 0; }
@@ -816,7 +824,7 @@
 <div class="wrap">
   <div class="top">
     <div class="brand">
-      <h1><span class="live off" id="live"></span>업무방 현황판</h1>
+      <h1><span class="live off" id="live"></span>업무방 현황판<span class="share-badge">공유 보기 · 읽기 전용</span></h1>
       <p id="sub">기록을 불러오는 중…</p>
     </div>
     <div class="chips" id="chips"></div>
@@ -1162,7 +1170,7 @@
   function ackKey(it) { return it.m ? 'mt:' + (it.m.chairId || it.m.key) + '|' + (it.m.updatedAt || 0) : it.s.id + '|' + (it.s.stateSince || 0); }
   function isAcked(k) { return SERVER ? !!sharedAcks[k] : !!(acked[k] || sharedAcks[k]); }
   function setAck(keys, on) {
-    if (!keys.length) return;
+    if (!keys.length || SHARE) return;
     if (SERVER) {
       keys.forEach(function (k) { if (on) sharedAcks[k] = Date.now(); else delete sharedAcks[k]; });   // 바로 보이게 하고 서버 답으로 맞춘다
       render();
@@ -1184,7 +1192,7 @@
   }
   function startAcks() {
     if (!SERVER) return;
-    var mine = Object.keys(acked);
+    var mine = SHARE ? [] : Object.keys(acked);   // 공유 보기는 이 브라우저에 적어 둔 것도 서버로 옮기지 않는다
     if (mine.length) postJson('__ack', { keys: mine, on: true }).then(function (j) { if (j.ok) { acked = {}; saveAcked(); if (j.acks) sharedAcks = j.acks; if (data) render(); } });
     else loadAcks();
     setInterval(loadAcks, 5000);
@@ -2546,8 +2554,20 @@
   // ---------- 서버로 열었을 때만 되는 것 (지시 보내기·고용·일감·정리) ----------
   var SERVER = /^https?:$/.test(location.protocol);
   if (!SERVER) document.body.classList.add('file-mode');
+  // 공유 보기(share.js 가 window.WR_SHARE 를 넣어 준다): 읽기만 한다. 확인·보내기·고용·해고·이름·일감 요청을 하나도 보내지 않고,
+  // 그런 단추는 감추고, 혹시 남은 단추를 눌러도 막는다 (서버도 GET 말고는 받지 않는다).
+  var SHARE = SERVER && !!window.WR_SHARE;
+  if (SHARE) {
+    document.body.classList.add('share-mode');
+    var SHARE_BLOCK = '.ack, .grp-ack, [data-ack], [data-ackall], [data-qr], [data-qr-open], [data-task-act], [data-sched-act], [data-perm], [data-unfire], [data-clean-act], [data-up-send], [data-tool], #fireBtn, #fireOk, #hireBtn, #hireGo, #renameBtn, #sendBtn';
+    document.addEventListener('click', function (e) {
+      if (e.target.closest && e.target.closest(SHARE_BLOCK)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    document.addEventListener('submit', function (e) { e.preventDefault(); e.stopImmediatePropagation(); }, true);
+  }
   startAcks();
   function postJson(url, body) {
+    if (SHARE) return Promise.resolve({ ok: false, error: '공유 보기에서는 바꿀 수 없어요' });
     return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify(body) })
       .then(function (r) { return r.json(); }, function () { return { ok: false, error: '서버에 닿지 못했어요' }; })
       .then(null, function () { return { ok: false, error: '답을 읽지 못했어요' }; });
@@ -2563,7 +2583,7 @@
   var QR = { approval: ['응 진행해', '아니, 하지 마'], question: ['알아서 판단해서 해'], report: ['이어서 진행해', '커밋하고 푸시해'], error: ['다시 해 봐'] };
   var qrState = {};   // 세션 id → { armed: 번호, at, open: 직접 쓰기 칸, draft, note, err }
   function qrHtml(s, cat) {
-    if (!SERVER || s.synthetic || showAcked || !QR[cat]) return '';
+    if (!SERVER || SHARE || s.synthetic || showAcked || !QR[cat]) return '';
     var q = qrState[s.id] || {}, armed = q.armed != null && Date.now() - q.at < 4000 ? q.armed : -1;
     var btns = QR[cat].map(function (t, i) {
       return '<button type="button" data-qr="' + esc(s.id) + '" data-qi="' + i + '" data-qc="' + cat + '"' + (armed === i ? ' class="armed"' : '') + '>' + (armed === i ? '한 번 더 → ' : '') + esc(t) + '</button>';
@@ -3064,6 +3084,7 @@
     go.disabled = true;
     note.className = 'send-note';
     note.textContent = '고용하는 중… (Orca 가 새 탭을 여는 데 몇 초 걸려요)';
+    if (SHARE) return;
     fetch('__hire', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify({ room: room, name: name }) })
       .then(function (r) { return r.json(); })
       .then(function (j) {
@@ -3262,6 +3283,7 @@
   }
   function loadSends(id) {
     clearTimeout(sendPoll);
+    if (SHARE) return;
     fetch('__sends?sid=' + encodeURIComponent(id), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
       if (openId !== id) return;
       var list = (j.list || []).slice(-3).reverse();
@@ -3282,6 +3304,7 @@
     btn.disabled = true;
     note.className = 'send-note';
     note.textContent = byId[id] && byId[id].machine ? '보내는 중…' : '터미널에 넣는 중… (Orca 가 느리면 30초 넘게 걸리기도 해요)';
+    if (SHARE) return;
     fetch('__send', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify({ sid: id, text: text }) })
       .then(function (r) { return r.json(); })
       .then(function (j) {
