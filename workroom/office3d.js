@@ -33,7 +33,10 @@
     var SEAT = 1.25;                 // 자리 간격 (말풍선이 옆 사람과 겹치지 않게 넉넉히)
     var ROOM_D = 6.2;                // 방 깊이 (뒷벽 → 유리 앞벽)
     var CORR = 2.6;                  // 방 앞 복도 폭
-    var SPINE = 2.8;                 // 왼쪽 세로 복도 폭
+    var SPINE0 = 2.8;                // 왼쪽 세로 복도 폭
+    var SIDE_W = 2.0;                // 컴퓨터가 여럿이면 복도 왼쪽에 두는 층 표시 띠 (층마다 세로 색 줄 + 눕힌 층 이름·동기화)
+    var SPINE = SPINE0;              // 방이 시작하는 x (층 표시 띠가 있으면 그만큼 오른쪽으로)
+    function spineX() { return SPINE - SPINE0 / 2; }   // 세로 복도 가운데 (사람이 걷는 줄)
     var ZONE_D = 3.4;                // 컴퓨터마다 층 안내 띠 (바닥에 층 이름을 크게 쓴다)
     var ZONE_COLORS = ['#3b7ddd', '#e0703c', '#2e9d6c', '#9a5bd5', '#d39b12', '#d6457a'];   // 층마다 띠·바닥 글씨·이름표 색
     var LANE_D = 1.6;                // 맨 앞 로비 길 (엘리베이터, 아래쪽 방 문 앞)
@@ -586,6 +589,25 @@
         var P = PAL, trash = [];
         function lam(c) { var m = new T.MeshLambertMaterial({ color: c }); trash.push(m); return m; }
         function basic(c) { var m = new T.MeshBasicMaterial({ color: c }); trash.push(m); return m; }
+        function zoneSideWidth(name) {
+          var x = document.createElement('canvas').getContext('2d');
+          x.font = '800 132px ' + FONT;
+          var nw = x.measureText(name + ' 층').width;
+          x.font = '700 76px ' + FONT;
+          return Math.ceil(nw + 40 + x.measureText('999분 전 동기화').width + 32);
+        }
+        // 다시 그리는 바닥 글씨 (층 옆 '이 컴퓨터' / 'n분 전 동기화')
+        function zoneCanvas(w, h) {
+          var c = document.createElement('canvas');
+          c.width = w;
+          c.height = h;
+          var t = new T.CanvasTexture(c);
+          t.anisotropy = aniso;
+          t.encoding = T.sRGBEncoding;
+          var m = new T.MeshLambertMaterial({ map: t, transparent: true, depthWrite: false });
+          trash.push(m, t);
+          return { c: c, x: c.getContext('2d'), tex: t, mat: m };
+        }
         // 바닥에 칠하는 큰 글씨 (층 이름). 바탕은 투명하게 두고 글씨만 칠한다.
         function floorText(text, color) {
           var font = '800 150px ' + FONT, c = document.createElement('canvas'), x = c.getContext('2d');
@@ -785,6 +807,7 @@
           last.rooms.push(r);
         });
         var multi = groups.some(function (gr) { return gr.machine; });
+        SPINE = SPINE0 + (multi ? SIDE_W : 0);
         var cols = colsFor(s.rooms.length);
         var z = 0, maxX = SPINE + cols * roomWidth(4), rooms = {}, rows = [], zones = [], breaks = [], labels = [];
         groups.forEach(function (gr) {
@@ -832,12 +855,15 @@
         var lf = mesh(G.plane, lm, maxX, LOBBY_D, 1, maxX / 2, 0, zL + LOBBY_D / 2, keep);
         lf.rotation.x = -Math.PI / 2;
         lf.receiveShadow = true;
-        // 층 안내 띠: 층 색으로 물든 바닥, 양쪽 색 줄, 바닥에 크게 쓴 층 이름 (이름표가 가려져도 층이 보이게)
-        zones.forEach(function (zn) {
-          var zc = (zn.z0 + zn.z1) / 2, edge = lam(zn.color);
-          box(maxX, 0.012, ZONE_D - 0.3, lam(new T.Color(P.floor).lerp(new T.Color(zn.color), 0.18)), maxX / 2, 0.006, zc);
-          box(maxX, 0.016, 0.12, edge, maxX / 2, 0.008, zn.z0 + 0.2);
-          box(maxX, 0.016, 0.12, edge, maxX / 2, 0.008, zn.z1 - 0.2);
+        // 층 안내 (컴퓨터가 여럿일 때). 화면에 떠 있는 카드 대신 바닥에 칠한다.
+        // - 가로 띠: 층 색으로 물든 바닥, 양쪽 색 줄, 크게 쓴 층 이름과 그 옆에 작게 '이 컴퓨터' / 'n분 전 동기화'
+        // - 세로 줄: 건물 맨 왼쪽 띠에 그 층 방들이 이어지는 만큼 색 줄 두 개, 그 사이에 층 이름·동기화를 눕혀 쓴다
+        // 동기화 글씨는 바뀔 때마다 updateZones 가 캔버스에 다시 그린다.
+        zones.forEach(function (zn, zi) {
+          var zc = (zn.z0 + zn.z1) / 2, edge = lam(zn.color), tint = lam(new T.Color(P.floor).lerp(new T.Color(zn.color), 0.18));
+          box(maxX - SIDE_W, 0.012, ZONE_D - 0.3, tint, (maxX + SIDE_W) / 2, 0.006, zc);
+          box(maxX - SIDE_W, 0.016, 0.12, edge, (maxX + SIDE_W) / 2, 0.008, zn.z0 + 0.2);
+          box(maxX - SIDE_W, 0.016, 0.12, edge, (maxX + SIDE_W) / 2, 0.008, zn.z1 - 0.2);
           // 글씨는 띠 뒤쪽에 쓴다 (앞쪽은 카메라에서 보면 바로 앞 방 뒷벽에 가린다)
           var paint = floorText(zn.name + ' 층', zn.color), span = maxX - SPINE - 1;
           var th = Math.min(ZONE_D - 1.4, span / paint.aspect), tw = th * paint.aspect;
@@ -846,11 +872,22 @@
             tm.rotation.x = -Math.PI / 2;
             tm.receiveShadow = true;
           }
-          var el = document.createElement('div');
-          el.className = 'o3-zone';
-          el.style.setProperty('--zc', zn.color);
-          layer.appendChild(el);
-          labels.push({ el: el, x: 0, y: 0.05, z: zc, zone: zn.name, self: zn.self });
+          zn.band = zoneCanvas(1024, 128);
+          var sh = Math.min(0.9, th * 0.5), sw = sh * 8;
+          var sm = mesh(G.plane, zn.band.mat, sw, sh, 1, SPINE + 0.6 + tw + 0.25 + sw / 2, 0.021, zn.z0 + 0.35 + th * 0.62, keep);
+          sm.rotation.x = -Math.PI / 2;
+          // 세로 줄: 그 층의 띠부터 다음 층(또는 로비) 앞까지
+          var zEnd = zi + 1 < zones.length ? zones[zi + 1].z0 : zL, len = zEnd - zn.z0 - 0.3, mz = zn.z0 + 0.15 + len / 2;
+          box(SIDE_W - 0.2, 0.012, len, tint, SIDE_W / 2, 0.006, mz);
+          box(0.1, 0.016, len, edge, 0.17, 0.008, mz);
+          box(0.1, 0.016, len, edge, SIDE_W - 0.17, 0.008, mz);
+          // 캔버스 길이는 층 이름 + 가장 긴 상태 글씨에 맞춘다 (남는 자리 없이 글씨를 크게)
+          zn.side = zoneCanvas(zoneSideWidth(zn.name), 192);
+          var vh = SIDE_W - 0.55, vw = vh * zn.side.c.width / 192;
+          if (vw > len - 0.4) { vw = len - 0.4; vh = vw * 192 / zn.side.c.width; }
+          var vm = mesh(G.plane, zn.side.mat, vw, vh, 1, SIDE_W / 2, 0.021, mz, keep);
+          vm.rotation.set(-Math.PI / 2, 0, Math.PI / 2);   // 글씨가 앞(카메라 쪽)에서 안쪽으로 읽히고, 글자 위가 바깥(왼쪽)을 본다
+          drawZoneTags(zn, zn.self ? '이 컴퓨터' : '');
         });
 
         // 방
@@ -1001,8 +1038,8 @@
         box(0.03, 0.14, 0.5, M.led, 0.32, 2.3, ez);
         W.elev = { key: 'elev', place: { t: 'lobby' }, x: 0.9, ax: 0.9, z: ez, yaw: -Math.PI / 2, pose: 'stand' };
         labels.push({ el: spotLabel('엘리베이터'), x: 0.3, y: 2.75, z: ez, ax: '-50%', ay: '-100%', minPpm: 9 });
-        plant(SPINE / 2, rz1 - 0.6, 1.2);
-        plant(SPINE / 2, rz0 + 1.2, 0.9);
+        plant(spineX(), rz1 - 0.6, 1.2);
+        plant(spineX(), rz0 + 1.2, 0.9);
 
         var avail = maxX - SPINE, xA = SPINE, xB = xA + avail * 0.36, xC = xB + avail * 0.37, xD = maxX;
         // 벽(아래 벽돌, 위 유리)과 위쪽 문이 있는 방 하나. 카메라 쪽(아래) 벽은 유리만 둔다.
@@ -1916,13 +1953,43 @@
         R.board.tex.needsUpdate = true;
       }
 
+      // 층 옆 글씨: 이 컴퓨터는 '이 컴퓨터', 다른 컴퓨터는 마지막으로 받은 때 ('n분 전 동기화')
       function updateZones() {
-        W.labels.forEach(function (lb) {
-          if (!lb.zone) return;
-          var m = (snap.machines || []).filter(function (x) { return x.name === lb.zone; })[0];
-          var html = '<b>' + esc(lb.zone) + '</b> 층' + (lb.self ? '<span>이 컴퓨터</span>' : m ? '<span>' + esc(m.ago) + ' 전 동기화</span>' : '');
-          if (lb.html !== html) { lb.el.innerHTML = html; lb.html = html; lb.w = 0; }
+        W.zones.forEach(function (zn) {
+          var m = (snap.machines || []).filter(function (x) { return x.name === zn.name; })[0];
+          drawZoneTags(zn, zn.self ? '이 컴퓨터' : m ? m.ago + ' 전 동기화' : '');
         });
+      }
+      function drawZoneTags(zn, status) {
+        if (!zn.band || zn.tagText === status) return;
+        zn.tagText = status;
+        var b = zn.band, bx = b.x;
+        bx.clearRect(0, 0, b.c.width, b.c.height);
+        bx.font = '700 84px ' + FONT;
+        bx.fillStyle = zn.color;
+        bx.textBaseline = 'middle';
+        bx.fillText(status, 8, b.c.height / 2 + 4);
+        b.tex.needsUpdate = true;
+        // 세로 줄: 층 이름(크게) + 상태(작게)를 한 줄로, 넘치면 줄여서 가운데에
+        var v = zn.side, vx = v.x, name = zn.name + ' 층', k = 1;
+        vx.clearRect(0, 0, v.c.width, v.c.height);
+        vx.textBaseline = 'middle';
+        vx.font = '800 132px ' + FONT;
+        var nw = vx.measureText(name).width;
+        vx.font = '700 76px ' + FONT;
+        var stw = status ? vx.measureText(status).width + 40 : 0;
+        if (nw + stw + 24 > v.c.width) k = v.c.width / (nw + stw + 24);
+        var x0 = (v.c.width - (nw + stw) * k) / 2, mid = v.c.height / 2 + 6;
+        vx.fillStyle = zn.color;
+        vx.font = '800 ' + Math.floor(132 * k) + 'px ' + FONT;
+        vx.fillText(name, x0, mid);
+        if (status) {
+          vx.globalAlpha = 0.85;
+          vx.font = '700 ' + Math.floor(76 * k) + 'px ' + FONT;
+          vx.fillText(status, x0 + (nw + 40) * k, mid + 14 * k);
+          vx.globalAlpha = 1;
+        }
+        v.tex.needsUpdate = true;
       }
 
       // ---------- 갈 곳 ----------
@@ -2013,7 +2080,7 @@
       function travel(pts, A, B) {
         if (A.row && B.row && A.row === B.row) { if (A.x !== B.x) pts.push(wp(B.x, A.row.zc, { t: 'corr', row: A.row })); return; }
         if (A.lobby && B.lobby) return;
-        var sp = { t: 'spine' }, xs = SPINE / 2;
+        var sp = { t: 'spine' }, xs = spineX();
         if (A.lobby) pts.push(wp(xs, W.laneZ, sp));
         else if (A.row) pts.push(wp(xs, A.row.zc, sp));
         pts.push(wp(xs, B.lobby ? W.laneZ : B.row.zc, sp));
@@ -2699,7 +2766,7 @@
         }
         if (x < SPINE && z < W.lobby.z0 && W.rows.length) {   // 왼쪽 세로 복도: 가까운 줄 복도로
           var near = W.rows.reduce(function (p, q) { return Math.abs(q.zc - z) < Math.abs(p.zc - z) ? q : p; });
-          return { key: key, place: { t: 'corr', row: near }, x: SPINE / 2, ax: SPINE / 2, z: near.zc, yaw: 0, pose: 'stand' };
+          return { key: key, place: { t: 'corr', row: near }, x: spineX(), ax: spineX(), z: near.zc, yaw: 0, pose: 'stand' };
         }
         return null;
       }
