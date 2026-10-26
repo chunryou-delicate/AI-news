@@ -681,6 +681,19 @@
   .send-list .bad b { color: var(--approval); }
   .sheet .actions { display: flex; gap: 8px; padding: 10px 16px 16px; align-items: center; flex-wrap: wrap; }
   .sheet .actions input { flex: 1; min-width: 200px; font: 12.5px ui-monospace, Consolas, monospace; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
+  /* 직원 이름 바꾸기 (세션 창 머리) */
+  .rename-btn { border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .rename-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 16px 0; }
+  .rename-row input { flex: 1; min-width: 140px; font: inherit; font-size: 13.5px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .rename-row button { border: 0; background: var(--done); color: #fff; border-radius: 8px; padding: 6px 12px; font: inherit; font-weight: 700; cursor: pointer; }
+  .rename-row button[type="button"] { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); }
+  .rename-row .send-note { width: 100%; margin: 0; }
+  /* 직원 탭 ▸ 해고 목록 */
+  .p-box.fired { border-left: 4px solid var(--fc); }
+  .fired .staff-row { cursor: default; }
+  .fired .staff-row:hover { background: none; }
+  .fired-act { padding: 0 8px 8px; align-items: center; }
+  .fired-act .send-note { margin: 0 0 0 4px; }
   /* 직원 해고: 세션 창 맨 아래 단추 + 한 번 더 묻는 확인 창 (사람 창보다 위) */
   .fire-row { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; flex-wrap: wrap; }
   .fire-btn { border: 1px solid var(--approval); background: transparent; color: var(--approval); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
@@ -717,7 +730,7 @@
   .o3-zone span { margin-left: 8px; color: var(--muted); font-size: 12px; }
   .o3-spot { font-size: 11px; font-weight: 700; color: #fff; background: rgba(20, 24, 30, .6); padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
   /* 사람 이름표: 머리 오른쪽 옆 네모. 줄 나눔·말줄임은 office3d.js 가 폭에 맞춰 미리 한다 (TAG_FONT·TAG_PAD 와 맞출 것) */
-  .o3-tag { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 3px; padding: 2px 3px; border-left: 3px solid var(--sc); border-radius: 3px; background: rgba(255, 255, 255, .95); color: #1f2328; font-size: 9px; line-height: 1.2; font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .22); z-index: 5; }
+  .o3-tag { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 3px; padding: 2px 3px; border-left: 3px solid var(--sc); border-radius: 3px; background: color-mix(in srgb, var(--fc, #ffffff) 26%, rgba(255, 255, 255, .84)); color: #1f2328; font-size: 9px; line-height: 1.2; font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, .22); z-index: 5; }
   .o3-tag span { white-space: nowrap; }
   .o3-tag .ico { flex: none; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 2px; background: var(--sc); color: #fff; font-size: 9px; font-weight: 900; line-height: 1; }
   .o3-tag.icon-only { padding: 0; border-left: 0; background: none; box-shadow: none; }
@@ -767,6 +780,10 @@
   .o3-ceo-btn { border: 1px solid rgba(255, 255, 255, .28); background: transparent; color: #fff; border-radius: 8px; width: 28px; height: 26px; cursor: pointer; }
   .o3-ceo-name { flex: 1; min-width: 0; text-align: center; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .o3-tag.sel { box-shadow: 0 0 0 2px #f2c14e, 0 1px 4px rgba(0, 0, 0, .22); }
+  /* 3D 재미: 머리 위로 떠오르는 그림(🎉 커밋, 👋 도착, ❤ 쓰다듬기), 손(✋) 도구일 때 손 모양 */
+  .o3-pop { z-index: 45; pointer-events: none; font-size: 22px; line-height: 1; text-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+  .office3d.o3-grabbing canvas { cursor: grab; }
+  .office3d.o3-grabbing canvas:active { cursor: grabbing; }
   .office3d .speech-card { z-index: 8; }
   @keyframes o3pulse { 50% { box-shadow: 0 0 0 2px transparent, 0 2px 8px rgba(0, 0, 0, .18); } }
   @keyframes o3bob { 50% { transform: translateY(-3px); } }
@@ -921,7 +938,8 @@
 
 <div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
   <div class="sheet">
-    <header><h3 id="sheetTitle"></h3><button class="close" id="sheetClose" type="button">닫기</button></header>
+    <header><h3 id="sheetTitle"></h3><button class="rename-btn" id="renameBtn" type="button" title="이 직원(세션) 이름 바꾸기" hidden>✎ 이름</button><button class="close" id="sheetClose" type="button">닫기</button></header>
+    <form class="rename-row" id="renameRow" hidden><input id="renameInput" maxlength="40" autocomplete="off" placeholder="새 이름 (세션 이름도 같이 바뀌어요)"><button type="submit">바꾸기</button><button type="button" id="renameCancel">취소</button><span class="send-note" id="renameNote"></span></form>
     <dl id="sheetBody"></dl>
     <form class="send-box" id="sendBox" hidden>
       <label for="sendText">지시 보내기</label>
@@ -1137,7 +1155,7 @@
   try { acked = JSON.parse(localStorage.getItem(ACK_KEY) || '{}') || {}; } catch (_) {}
   function saveAcked() {
     var now = Date.now();
-    Object.keys(acked).forEach(function (k) { if (now - acked[k] > ACK_KEEP) delete acked[k]; });
+    Object.keys(acked).forEach(function (k) { if (now - acked[k] > (k.indexOf('fire:') === 0 ? 10 * ACK_KEEP : ACK_KEEP)) delete acked[k]; });   // 해고(숨김)는 30일
     try { localStorage.setItem(ACK_KEY, JSON.stringify(acked)); } catch (_) {}
   }
   // 회의 의견 대기는 의장 세션 id 로 (회의 키는 컴퓨터마다 앞에 붙는 것이 달라서)
@@ -1185,7 +1203,7 @@
   }
   applyCardFolds();
   var STAFF_KEY = 'workroom-staff';
-  var STAFF_FILTER = [['all', '전체'], ['working', '일하는 중'], ['turn', '내 차례'], ['idle', '대기']];
+  var STAFF_FILTER = [['all', '전체'], ['working', '일하는 중'], ['turn', '내 차례'], ['idle', '대기'], ['fired', '해고']];
   var staffFilter = 'all';
   try { staffFilter = localStorage.getItem(STAFF_KEY) || 'all'; } catch (_) {}
 
@@ -1796,9 +1814,12 @@
   function render() {
     if (!data) return;
     var now = Date.now();
-    var sessions = data.sessions || [];
+    // 해고(숨김)한 직원은 현황판 어디에도 그리지 않는다 (직원 탭 '해고' 목록에만). data._all = 받은 그대로
+    if (!data._all) data._all = data.sessions || [];
+    data.sessions = data._all.filter(function (s) { return !isFired(s.id); });
+    var sessions = data.sessions;
     byId = {};
-    sessions.forEach(function (s) { byId[s.id] = s; });
+    data._all.forEach(function (s) { byId[s.id] = s; });
 
     // 회의 상태 파일: 의장·역할을 실제 세션과 잇고, 짝이 없는 역할(Codex 등)은 가상 인물로 만든다.
     roleOf = {};
@@ -2427,6 +2448,26 @@
     var st = STATE[s.state] || STATE.idle;
     return { label: st.label, color: st.color, rank: s.state === 'working' ? 2 : 4, calm: s.state === 'idle' };
   }
+  // 해고(숨김)한 직원: 복직 · 영구 해고(탭 닫기)
+  function firedPeople() { return ((data && data._all) || []).filter(function (s) { return isFired(s.id) && s.state !== 'ended'; }); }
+  var fireNotes = {};
+  function renderFired(now) {
+    var list = firedPeople();
+    document.getElementById('staff').innerHTML = list.length ? list.map(function (s) {
+      var inf = staffInfo(s), note = fireNotes[s.id];
+      return '<li class="p-box fired" style="--fc:' + floorColor(s.machine || '') + '"><div class="staff-row" style="--sc:' + inf.color + '">' +
+        '<span class="s-dot"></span><span class="s-name">' + esc(titleOf(s)) + '</span><span class="s-st">' + inf.label + ' · ' + (ago(s.stateSince, now) || '방금') + '</span>' +
+        '<span class="s-sub">' + esc(s.room) + '</span></div>' +
+        '<div class="task-act fired-act"><button type="button" data-unfire="' + esc(s.id) + '">복직</button><button type="button" class="danger" data-perm="' + esc(s.id) + '">영구 해고</button>' +
+        (note ? '<span class="send-note' + (note.err ? ' err' : '') + '">' + esc(note.text) + '</span>' : '') + '</div></li>';
+    }).join('') : '<li class="empty-note">해고한 직원이 없어요. 사람을 눌러 세션 창 맨 아래 \'직원 해고\'로 숨길 수 있어요.</li>';
+  }
+  document.getElementById('staff').addEventListener('click', function (e) {
+    var u = e.target.closest('[data-unfire]');
+    if (u) { e.stopPropagation(); delete fireNotes[u.getAttribute('data-unfire')]; setAck(['fire:' + u.getAttribute('data-unfire')], false); return; }
+    var p = e.target.closest('[data-perm]');
+    if (p) { e.stopPropagation(); openFireConfirm('perm', p.getAttribute('data-perm')); }
+  });
   function staffMatch(s) {
     if (staffFilter === 'working') return s.state === 'working';
     if (staffFilter === 'idle') return s.state === 'idle';
@@ -2447,13 +2488,14 @@
     var save = staffFilter;
     document.getElementById('staffSeg').innerHTML = STAFF_FILTER.map(function (f) {
       staffFilter = f[0];
-      var n = people.filter(staffMatch).length;
+      var n = f[0] === 'fired' ? firedPeople().length : people.filter(staffMatch).length;
       return '<button type="button" data-staff="' + f[0] + '" class="' + (save === f[0] ? 'on' : '') + '" aria-pressed="' + (save === f[0]) + '">' + f[1] + '<b>' + n + '</b></button>';
     }).join('');
     staffFilter = save;
     var working = people.filter(function (s) { return s.state === 'working'; }).length;
     document.getElementById('staffN').textContent = people.length ? people.length + '명' + (working ? ' · 일하는 중 ' + working : '') : '';
     document.getElementById('dockStaffN').textContent = people.length ? String(people.length) : '';
+    if (staffFilter === 'fired') { renderFired(now); return; }
 
     // 층은 이 컴퓨터가 먼저, 파트는 방 순서대로. 방 목록에 없는 방의 세션은 그 층 끝에 파트를 붙인다.
     var floors = [], fBy = {};
@@ -3102,10 +3144,12 @@
     document.querySelector('.sheet .actions').style.display = s.synthetic ? 'none' : '';
     document.getElementById('resumeCmd').value = s.synthetic ? '' : 'cd "' + s.cwd + '"; claude --resume ' + s.id;
     syncFireRow(s, false);
+    syncRename(s, false);
   }
   function openSheet(id) {
     openId = id;
     syncFireRow(byId[id], true);
+    syncRename(byId[id], true);
     // 지난번에 못 찾은 전체 답변은 다시 찾아본다 (그사이 회의록이 왔을 수 있다)
     Object.keys(fullAns).forEach(function (k) { if (fullAns[k] === false && k.indexOf(id + '|') === 0) delete fullAns[k]; });
     fillSheet(id);
@@ -3113,43 +3157,83 @@
     document.getElementById('scrim').classList.add('open');
     document.getElementById('sheetClose').focus();
   }
-  // ---------- 직원 해고 ----------
-  // 세션 창의 '직원 해고' → 한 번 더 묻는 창 → 그 세션의 Orca 탭을 닫는다 (일하는 중이어도). 다른 컴퓨터 세션은 동기화로 그 컴퓨터가 닫는다.
-  // 서버로 열었을 때, Orca 터미널에서 도는 세션만 (회의 역할·채팅 탭은 안 됨). 대화 기록은 남아 claude --resume 으로 다시 부를 수 있다.
-  var fireSid = null;
-  function canFire(s) { return /^https?:$/.test(location.protocol) && !!s && !s.synthetic && s.state !== 'ended' && s.app !== 'chat' && !!(s.orca && s.orca.terminal); }
+  // ---------- 직원 해고 (두 단계) ----------
+  // 1차: 세션 창 '직원 해고' → 한 번 더 묻고 현황판에서만 숨긴다 (세션은 그대로 돈다). 다른 기기·컴퓨터 현황판에서도 숨는다(acks 'fire:', 30일).
+  // 2차: 직원 탭 ▸ 해고 ▸ '영구 해고' → 한 번 더 묻고 그 세션의 Orca 탭을 닫는다 (에이전트가 돌고 있어도). 다른 컴퓨터 세션은 동기화로.
+  var fireSid = null, fireMode = '';
+  function isFired(sid) { return isAcked('fire:' + sid); }
+  function canFire(s) { return !!s && !s.synthetic && s.state !== 'ended'; }
   function syncFireRow(s, fresh) {
     var row = document.getElementById('fireRow');
     row.hidden = !canFire(s);
     if (fresh) { document.getElementById('fireNote').textContent = ''; document.getElementById('fireNote').className = 'send-note'; document.getElementById('fireBtn').disabled = false; }
   }
-  function openFireConfirm() {
-    var s = byId[openId];
+  function openFireConfirm(mode, sid) {
+    var s = byId[sid];
     if (!canFire(s)) return;
-    fireSid = s.id;
-    var warn = s.state === 'working' ? '\n<b>지금 일하는 중이에요. 하던 일이 그대로 멈춰요.</b>' : (s.state === 'approval' || s.state === 'question') ? '\n<b>지금 답을 기다리는 중이에요.</b>' : '';
-    document.getElementById('fireMsg').innerHTML = '<strong>' + esc(titleOf(s)) + '</strong> · ' + esc(s.room) + '\n그 세션의 Orca 탭을 닫아요. 대화 기록은 남아서 <code>claude --resume</code> 으로 다시 부를 수 있어요.' +
-      warn + (s.machine ? '\n다른 컴퓨터(' + esc(s.machine) + ') 세션이라 그 컴퓨터가 동기화할 때(1~2분) 닫혀요.' : '');
+    fireSid = sid; fireMode = mode;
+    var head = '<strong>' + esc(titleOf(s)) + '</strong> · ' + esc(s.room);
+    if (mode === 'temp') {
+      document.getElementById('fireTitle').textContent = '직원을 해고할까요?';
+      document.getElementById('fireMsg').innerHTML = head + '\n현황판에서만 안 보이게 해요. 세션은 그대로 돌아요.\n직원 탭 ▸ 해고에서 복직하거나 영구 해고(탭 닫기)할 수 있어요.';
+      document.getElementById('fireOk').textContent = '해고';
+    } else {
+      var warn = s.state === 'working' ? '\n<b>지금 일하는 중이에요. 하던 일이 그대로 멈춰요.</b>' : (s.state === 'approval' || s.state === 'question') ? '\n<b>지금 답을 기다리는 중이에요.</b>' : '';
+      var noTab = !(s.orca && s.orca.terminal) ? '\n<b>Orca 탭이 없는 세션(채팅 탭·Orca 밖)이라 닫을 수 없어요. 숨긴 채로 둬요.</b>' : '';
+      document.getElementById('fireTitle').textContent = '영구 해고할까요?';
+      document.getElementById('fireMsg').innerHTML = head + '\n그 세션의 Orca 탭을 닫아요. 대화 기록은 남아서 <code>claude --resume</code> 으로 다시 부를 수 있어요.' + warn +
+        (s.machine ? '\n다른 컴퓨터(' + esc(s.machine) + ') 세션이라 그 컴퓨터가 동기화할 때(1~2분) 닫혀요.' : '') + noTab;
+      document.getElementById('fireOk').textContent = '영구 해고';
+    }
     document.getElementById('fireConfirm').hidden = false;
     document.getElementById('fireCancel').focus();
   }
   function closeFireConfirm() { document.getElementById('fireConfirm').hidden = true; fireSid = null; }
-  document.getElementById('fireBtn').addEventListener('click', openFireConfirm);
+  document.getElementById('fireBtn').addEventListener('click', function () { openFireConfirm('temp', openId); });
   document.getElementById('fireCancel').addEventListener('click', closeFireConfirm);
   document.getElementById('fireConfirm').addEventListener('click', function (e) { if (e.target.id === 'fireConfirm') closeFireConfirm(); });
   document.getElementById('fireOk').addEventListener('click', function () {
-    var sid = fireSid, s = byId[sid];
+    var sid = fireSid, s = byId[sid], mode = fireMode;
     closeFireConfirm();
     if (!sid) return;
-    var note = document.getElementById('fireNote'), btn = document.getElementById('fireBtn');
-    btn.disabled = true;
-    note.className = 'send-note';
-    note.textContent = '해고하는 중…';
+    if (mode === 'temp') { closeSheet(); setAck(['fire:' + sid], true); return; }
+    if (!(s && s.orca && s.orca.terminal)) { fireNotes[sid] = { text: 'Orca 탭이 없어 닫지 못했어요 (숨긴 채로 둬요)', err: true }; render(); return; }
+    if (!SERVER) { fireNotes[sid] = { text: '서버로 연 현황판에서만 영구 해고할 수 있어요', err: true }; render(); return; }
+    fireNotes[sid] = { text: '닫는 중…' };
+    render();
     postJson('__close', { sids: [sid], force: true }).then(function (j) {
       var r = (j.results || [])[0] || j;
-      btn.disabled = false;
-      if (r.ok) note.textContent = r.status === 'queued' ? (s && s.machine ? s.machine : '다른 컴퓨터') + ' 로 보냈어요. 동기화 때 탭이 닫혀요.' : '해고했어요. 탭을 닫았어요.';
-      else { note.className = 'send-note err'; note.textContent = r.error || j.error || '해고하지 못했어요'; }
+      fireNotes[sid] = r.ok ? { text: r.status === 'queued' ? (s.machine || '다른 컴퓨터') + ' 로 보냈어요. 동기화 때 탭이 닫혀요.' : r.already ? '이미 닫혀 있었어요' : '탭을 닫았어요' } : { text: r.error || j.error || '닫지 못했어요', err: true };
+      render();
+    });
+  });
+
+  // ---------- 직원 이름 바꾸기 ----------
+  // 세션 창 '✎ 이름' → 새 이름 → 그 세션에 /rename (세션 이름이 바뀌면 현황판 이름도 따라 바뀐다), Orca 탭 제목도. 다른 컴퓨터 세션은 동기화로.
+  function canRename(s) { return SERVER && !!s && !s.synthetic && s.state !== 'ended' && !!(s.orca && s.orca.terminal); }
+  function syncRename(s, fresh) {
+    document.getElementById('renameBtn').hidden = !canRename(s);
+    if (fresh) { document.getElementById('renameRow').hidden = true; document.getElementById('renameNote').textContent = ''; }
+  }
+  document.getElementById('renameBtn').addEventListener('click', function () {
+    var s = byId[openId], row = document.getElementById('renameRow');
+    if (!canRename(s)) return;
+    row.hidden = !row.hidden;
+    if (!row.hidden) { var inp = document.getElementById('renameInput'); inp.value = titleOf(s); inp.focus(); inp.select(); }
+  });
+  document.getElementById('renameCancel').addEventListener('click', function () { document.getElementById('renameRow').hidden = true; });
+  document.getElementById('renameRow').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var sid = openId, s = byId[sid], name = document.getElementById('renameInput').value.trim(), note = document.getElementById('renameNote');
+    if (!sid || !name) return;
+    note.className = 'send-note';
+    note.textContent = '바꾸는 중…';
+    postJson('__rename', { sid: sid, name: name }).then(function (j) {
+      if (openId !== sid) return;
+      if (j.ok) {
+        note.textContent = j.status === 'queued' ? (s && s.machine ? s.machine : '다른 컴퓨터') + ' 로 보냈어요. 동기화 때 바뀌어요.' : '바꿨어요: ' + j.name + ' (현황판에는 곧 반영돼요)';
+        document.getElementById('renameRow').querySelector('input').blur();
+      } else { note.className = 'send-note err'; note.textContent = j.error || '바꾸지 못했어요'; }
     });
   });
 
@@ -3261,7 +3345,8 @@
         }
         var s = p.s;
         people.push({ id: s.id, row: row, seat: i, name: p.label || fit(titleOf(s), 12), title: titleOf(s), chair: !!p.chair, state: s.state, since: s.stateSince || 0,
-          color: personColor(s.id), look: look(s.id), bubble: bubbleFor(s, info[s.id], now) });
+          color: personColor(s.id), look: look(s.id), bubble: bubbleFor(s, info[s.id], now),
+          cheer: s.git && s.git.commits ? s.git.at || 0 : 0 });   // 커밋한 차례 → 3D 에서 🎉
       }
       L.far.forEach(function (p, i) { add(p, 'far', i); });
       L.near.forEach(function (p, i) { add(p, 'near', i); });

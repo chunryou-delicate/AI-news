@@ -363,6 +363,7 @@
         '<button type="button" data-a="right" title="오른쪽으로 돌리기" aria-label="오른쪽으로 돌리기">⟳</button>' +
         '<button type="button" data-a="out" title="축소" aria-label="축소">−</button>' +
         '<button type="button" data-a="in" title="확대" aria-label="확대">+</button>' +
+        '<button type="button" data-a="grab" title="손: 사람을 끌어 옮겨요. 의자에 놓으면 앉고(다른 방이면 잠깐 앉았다 돌아가요), 그냥 누르면 쓰다듬어요" aria-label="손" aria-pressed="false">✋</button>' +
         '<button type="button" data-a="home" class="wide" title="전체 보기">전체</button>' +
         '<button type="button" data-a="look" class="wide" title="사무실 색과 조명 바꾸기" aria-expanded="false">조명</button>' +
         '<button type="button" data-a="city" class="wide" title="건물 아래 거리와 주변 빌딩 (느리면 끄세요)" aria-pressed="false">도시</button>';
@@ -810,7 +811,7 @@
         SPINE = SPINE0 + (multi ? SIDE_W : 0);
         var cols = colsFor(s.rooms.length);
         var z = 0, maxX = SPINE + cols * roomWidth(4), rooms = {}, rows = [], zones = [], breaks = [], labels = [];
-        groups.forEach(function (gr) {
+        groups.forEach(function (gr, gi) {
           if (multi) {
             zones.push({ name: gr.machine || s.self || '이 컴퓨터', self: !gr.machine, color: ZONE_COLORS[zones.length % ZONE_COLORS.length], z0: z, z1: z + ZONE_D });
             z += ZONE_D;
@@ -819,6 +820,7 @@
             var row = { i: rows.length, z0: z, zc: z + ROOM_D + CORR / 2, x1: SPINE, rooms: [] };
             gr.rooms.slice(i, i + cols).forEach(function (r) {
               var R = roomGeo(r, row.x1, z, row);
+              R.fc = ZONE_COLORS[gi % ZONE_COLORS.length];   // 그 층 색 (사람 이름표 바탕)
               rooms[r.name] = R;
               row.rooms.push(R);
               row.x1 = R.x1;
@@ -2168,6 +2170,8 @@
         a.parts.mats.forEach(function (m) { m.dispose(); });
         a.tag.remove();
         a.bub.remove();
+        (a.pops || []).forEach(function (q) { q.el.remove(); });
+        if (held === a) held = null;
         delete actors[a.id];
       }
       function endBreak(a) {
@@ -2196,10 +2200,13 @@
         a.pose = a.spot.pose;
         a.place = a.spot.place;
         if (a.leaving) a.fadeDir = -1;
+        else if (a.greet) { a.greet = false; cheer(a, '👋', 2000); }
       }
       function leave(a) {
         if (a.leaving) return;
         a.leaving = true;
+        a.visit = null;
+        if (a.held) { a.held = false; if (held === a) held = null; }
         endBreak(a);
         var R = W.rooms[a.room];
         go(a, a.worker && R ? doorSpot(R) : W.elev);
@@ -2215,6 +2222,7 @@
       }
 
       function step(a, dt, t) {
+        if (a.held) { a.path = []; a.moving = false; }
         if (a.path.length) {
           var w = a.path[0], dx = w.x - a.pos.x, dz = w.z - a.pos.z, d = Math.sqrt(dx * dx + dz * dz), mv = a.speed * dt;
           if (d > 0.001) turn(a, Math.atan2(dx, dz), dt * 10);
@@ -2239,14 +2247,14 @@
           if (a.fadeDir > 0 && a.alpha >= 1) a.fadeDir = 0;
           if (a.fadeDir < 0 && a.alpha <= 0) { destroy(a); return; }
         }
-        a.obj.position.set(a.pos.x, 0, a.pos.z);
+        a.obj.position.set(a.pos.x, a.held ? 0.45 + 0.05 * Math.sin(t * 7) : 0, a.pos.z);
         a.obj.rotation.y = a.yaw;
         if (a.parts.model) modelPose(a, dt); else pose(a, dt, t);
       }
 
       // 메시 캐릭터: 자세에 맞는 동작으로 부드럽게 넘어가고, 앉는 동작이면 엉덩이를 의자 위에 맞춘다.
       function modelPose(a, dt) {
-        var P = a.parts, ps = a.moving ? 'walk' : a.pose, clip = CLIP_FOR[ps] || 'idle';
+        var P = a.parts, ps = poseNow(a), clip = CLIP_FOR[ps] || 'idle';
         var b = a.p.bubble;
         if (clip === 'type' && b && b.kind === 'say' && Date.now() - (b.t || 0) < 45000) clip = 'talkSit';   // 방금 말했으면 손짓하며 말하기
         if (!P.actions[clip]) clip = P.actions.idle ? 'idle' : Object.keys(P.actions)[0];
@@ -2273,7 +2281,7 @@
 
       // 도형 사람·로봇: 관절 목표 각도를 정하고 부드럽게 따라간다.
       function pose(a, dt, t) {
-        var P = a.parts, s = a.seed, ps = a.moving ? 'walk' : a.pose;
+        var P = a.parts, s = a.seed, ps = poseNow(a);
         var J = { hip: P.standHip, t0: 0, t1: 0, s0: 0, s1: 0, x0: 0, x1: 0, z0: -0.06, z1: 0.06, tor: 0, hx: 0 };
         if (ps === 'walk') {
           var sn = Math.sin(a.walk), cs = Math.cos(a.walk);
@@ -2332,7 +2340,7 @@
         });
         var cap = Math.max(1, Math.floor(restingN / 4));
         list.forEach(function (a) {
-          if (a.worker || a.leaving || !a.base) return;
+          if (a.worker || a.leaving || !a.base || a.visit || a.held) return;
           var idle = resting(a, now);
           if (a.brk) {
             if (!idle) { endBreak(a); go(a, a.base); return; }
@@ -2355,6 +2363,27 @@
           go(a, b);
         });
       }
+
+      // 손으로 옮겨 놓은 사람: 정한 시간이 지나면 일어나서 원래 자리(쉬던 곳)로 걸어 돌아간다
+      function tickVisits(now) {
+        Object.keys(actors).forEach(function (id) {
+          var a = actors[id];
+          if (!a.visit || a.held || now < a.visit.until) return;
+          a.visit = null;
+          if (!a.leaving) go(a, a.brk ? a.brk.spot : a.base || W.elev);
+        });
+      }
+
+      // ---------- 재미: 손 흔들기·머리 위 그림 ----------
+      function cheer(a, ch, ms) {
+        a.waveUntil = Date.now() + (ms || 2500);
+        var el = document.createElement('div');
+        el.className = 'o3-pop';
+        el.textContent = ch;
+        layer.appendChild(el);
+        (a.pops = a.pops || []).push({ el: el, t0: Date.now() });
+      }
+      function poseNow(a) { return a.moving ? 'walk' : a.waveUntil && a.waveUntil > Date.now() && !SITTING[a.pose] ? 'raise' : a.pose; }
 
       // ---------- 장면 받기 ----------
       function update(s) {
@@ -2388,12 +2417,18 @@
             if (fresh) a = actors[p.id] = createActor(p);
             a.p = p;
             a.room = r.name;
+            if (R && a.fc !== R.fc) { a.fc = R.fc; a.tag.style.setProperty('--fc', R.fc); }
             if (a.leaving) { a.leaving = false; a.fadeDir = 1; }
             var base = baseSpot(p, R, slot, r.meeting);
             a.base = base;
+            // 이번 차례에 커밋했으면 잠깐 손 흔들며 🎉 (현황판을 연 뒤 2분 안의 것만)
+            if (p.cheer && a.cheerAt !== p.cheer) { if (a.cheerAt !== undefined || now - p.cheer < 120000) { if (now - p.cheer < 120000) cheer(a, '🎉', 3000); } a.cheerAt = p.cheer; }
+            if (a.held) { setOverlay(a, p); return; }   // 손에 들려 있는 동안은 그대로
             var spot = base;
-            if (a.brk) { if (resting(a, now)) spot = a.brk.spot; else endBreak(a); }
+            if (a.visit) spot = a.visit.spot;   // 손으로 옮겨 놓은 자리에 잠깐
+            else if (a.brk) { if (resting(a, now)) spot = a.brk.spot; else endBreak(a); }
             if (fresh && !first) {
+              a.greet = true;   // 엘리베이터에서 걸어와 자리에 닿으면 손 흔들기
               placeAt(a, p.worker && R ? doorSpot(R) : W.elev);
               a.alpha = 0; setAlpha(a); a.fadeDir = 1;
               go(a, spot);
@@ -2530,6 +2565,76 @@
         userMoved = true;
       }
 
+      // ---------- 손 (도구 막대 ✋) ----------
+      var grabMode = false, held = null;
+      function actorAt(px, py) {
+        var best = null, bd = 1e9;
+        Object.keys(actors).forEach(function (id) {
+          var a = actors[id], sc = a.scr;
+          if (!sc || a.alpha < 0.5 || a.ceo || a.leaving) return;
+          var hw = Math.max(TOUCH ? 20 : 12, sc.ppm * 0.4), hb = Math.max(TOUCH ? 34 : 26, sc.ppm * (SITTING[a.pose] ? 1.0 : 1.5));
+          var dx = Math.abs(px - sc.x), dy = py - sc.y;
+          if (dx > hw || dy < -14 || dy > hb) return;
+          if (dx < bd) { bd = dx; best = a; }
+        });
+        return best;
+      }
+      function startHold(a) {
+        held = a;
+        a.held = true;
+        a.path = [];
+        a.moving = false;
+        a.visit = null;
+        endBreak(a);
+        a.pose = 'raise';   // 들리면 손을 흔든다
+        a.snapPose = true;
+      }
+      // 놓은 자리 가까이(0.85m 안)의 빈 의자·쉼터 자리
+      function seatNear(x, z, me) {
+        var used = {};
+        Object.keys(actors).forEach(function (id) { var o = actors[id]; if (o !== me && o.spotKey) used[o.spotKey.replace(/^visit:/, '')] = true; });
+        var best = null, bd = 0.85;
+        Object.keys(W.rooms).forEach(function (n) {
+          var R = W.rooms[n];
+          R.seatX.forEach(function (sx, i) {
+            ['far', 'near'].forEach(function (row) {
+              var s = seatSpot(R, row, i, R.kind === 'lounge' ? 'lounge' : 'sit'), d = Math.hypot(s.x - x, s.z - z);
+              if (d < bd && !used[s.key]) { bd = d; best = s; best.R = R; }
+            });
+          });
+        });
+        W.breaks.forEach(function (b) {
+          var d = Math.hypot(b.x - x, b.z - z);
+          if (d < bd && !used[b.key] && !b.by) { bd = d; best = b; }
+        });
+        return best;
+      }
+      function dropHeld() {
+        var a = held;
+        held = null;
+        if (!a) return;
+        a.held = false;
+        var now = Date.now(), seat = seatNear(a.pos.x, a.pos.z, a);
+        if (seat && a.base && seat.key === a.base.key) { placeAt(a, a.base); return; }   // 제자리에 놓으면 그대로
+        if (seat) {
+          // 의자에 앉힌다. 다른 방 의자면 잠깐(25초) 앉아 있다가 일어나서 제 방으로 돌아간다.
+          var other = !!(seat.R && seat.R.name !== a.room);
+          var spot = Object.assign({}, seat, { key: 'visit:' + seat.key });
+          delete spot.R;
+          placeAt(a, spot);
+          a.visit = { spot: spot, until: now + (other ? 25000 : 18000) };
+          cheer(a, other ? '☕' : '💺', 1600);
+          return;
+        }
+        // 의자가 아니면 그 자리에 잠깐 서 있다가 돌아간다 (걸을 수 없는 곳이면 바로 제자리로)
+        var fs = spotAt(a.pos.x, a.pos.z);
+        if (fs && fs !== W.ceoSeat) {
+          var st = Object.assign({}, fs, { key: 'visit:floor', yaw: a.yaw, pose: 'stand' });
+          placeAt(a, st);
+          a.visit = { spot: st, until: now + 4000 };
+        } else placeAt(a, a.base || W.elev);
+      }
+
       // ---------- 입력 ----------
       var pointers = {}, drag = null;
       function pts2() {
@@ -2545,6 +2650,8 @@
           drag = { mode: 'pinch', moved: true, d: Math.hypot(two[0].x - two[1].x, two[0].y - two[1].y), ang: Math.atan2(two[1].y - two[0].y, two[1].x - two[0].x), mx: (two[0].x + two[1].x) / 2, my: (two[0].y + two[1].y) / 2 };
         } else {
           var p = pointers[e.pointerId];
+          var hit = grabMode && (e.button === 0 || e.button == null) ? actorAt(p.x, p.y) : null;
+          if (hit) { drag = { mode: 'grab', a: hit, sx: p.x, sy: p.y, lx: p.x, ly: p.y, moved: false, button: e.button }; return; }
           drag = { mode: e.button === 2 || e.ctrlKey || e.shiftKey || e.altKey ? 'rot' : 'pan', sx: p.x, sy: p.y, lx: p.x, ly: p.y, moved: false, button: e.button };
         }
       });
@@ -2566,6 +2673,13 @@
         }
         var p = pointers[e.pointerId], dx = p.x - drag.lx, dy = p.y - drag.ly;
         drag.lx = p.x; drag.ly = p.y;
+        if (drag.mode === 'grab') {
+          if (!drag.moved && Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < 6) return;
+          if (!drag.moved) { drag.moved = true; startHold(drag.a); }
+          var gp = ground(p.x, p.y);
+          if (gp && held) { held.pos.x = clamp(gp.x, 0.2, W.width - 0.2); held.pos.z = clamp(gp.z, 0.2, W.depth - 0.2); }
+          return;
+        }
         if (!drag.moved && Math.abs(p.x - drag.sx) + Math.abs(p.y - drag.sy) < 6) return;
         drag.moved = true;
         if (drag.mode === 'rot') rotateBy(dx, dy); else panBy(dx, dy);
@@ -2581,6 +2695,12 @@
           return;
         }
         if (!left.length) {
+          if (drag && drag.mode === 'grab') {
+            if (drag.moved) dropHeld();
+            else if (e.type === 'pointerup') { drag.a.lastPet = Date.now(); cheer(drag.a, '❤', 2200); }   // 그냥 누르면 쓰다듬기
+            drag = null;
+            return;
+          }
           if (drag && !drag.moved && e.type === 'pointerup' && (drag.button === 0 || drag.button == null)) pick(p.x, p.y);
           drag = null;
         }
@@ -2603,6 +2723,14 @@
         else if (act === 'in') goal.dist = Math.max(2.5, goal.dist / 1.35);
         else if (act === 'out') goal.dist = Math.min(Math.max(maxDist, 20), goal.dist * 1.35);
         else if (act === 'home') { if (focus) host.back(); else flyTo(overview()); }
+        else if (act === 'grab') {
+          grabMode = !grabMode;
+          b.setAttribute('aria-pressed', String(grabMode));
+          container.classList.toggle('o3-grabbing', grabMode);
+          hint.textContent = grabMode ? '손: 사람을 끌어 의자에 놓으면 앉아요 · 그냥 누르면 쓰다듬기 · ✋ 를 다시 누르면 끝' : hintText;
+          hint.classList.toggle('fade', !grabMode);
+          return;
+        }
         else if (act === 'look') {
           lookPanel.hidden = !lookPanel.hidden;
           b.setAttribute('aria-expanded', String(!lookPanel.hidden));
@@ -2901,6 +3029,16 @@
             var tp = screenOf(HV) || sp;
             put(a.tag, sp.x + 0.11 * ppm + 1, tp.y, '0', '-50%');
           }
+          if (a.pops && a.pops.length) {
+            var nowP = Date.now();
+            a.pops = a.pops.filter(function (q) {
+              var age = nowP - q.t0;
+              if (age > 1800 || !sp) { q.el.remove(); return false; }
+              put(q.el, sp.x, sp.y - 8 - age * 0.025, '-50%', '-100%');
+              q.el.style.opacity = String(Math.min(1, (1800 - age) / 500));
+              return true;
+            });
+          }
           var b = a.p.bubble, want = on && !a.worker && !!a.bubKey && b && b.kind !== 'mini' && a.alpha > 0.6;
           if (want && focus) want = inFocus || b.kind === 'alert';
           else if (want && ppm < 12) want = b.kind === 'alert' || b.t === latest;
@@ -2967,6 +3105,7 @@
         if (!cw) resize(true);
         stepCamera(dt);
         tickBreaks(Date.now());
+        tickVisits(Date.now());
         var sec = t / 1000;
         Object.keys(actors).forEach(function (id) { if (actors[id]) step(actors[id], dt, sec); });
         if (city) city.tick(dt);

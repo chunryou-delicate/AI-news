@@ -120,7 +120,7 @@ async function tick() {
     // 어느 기기·컴퓨터에서든 '확인'했거나 답한 것은 알리지 않는다 (다시 알림도)
     let acked = {};
     try { acked = require('./acks.js').merged(); } catch (_) {}
-    const items = pending(st).filter((it) => !acked[it.key]), now = Date.now();
+    const items = pending(st).filter((it) => !acked[it.key] && !acked['fire:' + it.sid]), now = Date.now();   // 해고(숨김)한 직원도 알리지 않는다
     if (!ns()) {
       // 처음 켰을 때: 이미 있던 것은 알리지 않고 지금부터 생기는 것만
       NS = { sent: {}, msgs: {}, offset: 0 };

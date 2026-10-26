@@ -1093,6 +1093,9 @@ function rebuild() {
   let files = [];
   try { files = fs.readdirSync(SESS_DIR).filter((f) => f.endsWith('.json')); } catch (_) {}
 
+  // Claude Code 가 살아 있는 세션마다 남기는 기록(~/.claude/sessions)이 있으면, 거기 없는 세션은 끝난 것으로 본다
+  // (탭을 강제로 닫으면 퇴장 훅이 안 불려 '대기'·'일하는 중' 으로 12시간 남던 유령). 막 시작해 기록이 아직 없을 수 있어 2분은 기다린다.
+  const registryOn = registry.size > 0;
   for (const f of files) {
     const full = path.join(SESS_DIR, f);
     const s = readJson(full, null);
@@ -1109,6 +1112,9 @@ function rebuild() {
       // Esc 로 중단하면 Stop 훅이 오지 않는다. Claude Code 쪽 상태가 더 최근에 idle 이 되었으면 끝난 것으로 본다.
       if (reg.alive && state === 'working' && reg.status === 'idle' && reg.statusUpdatedAt > (s.eventAt || 0) + 3000) state = 'done';
       if (reg.nameSource === 'user' && reg.name) s.title = reg.name;
+    } else if (registryOn && state !== 'ended' && age > 2 * MIN) {
+      state = 'ended';
+      s.endedAt = s.endedAt || s.updatedAt;
     } else if (state !== 'ended' && age > QUIET_HIDE_MS) {
       continue;
     } else if (state !== 'ended' && age > 2 * HOUR) {

@@ -280,14 +280,34 @@ function closeLocal(sid, force) {
   if (s.state === 'ended') return { ok: true, already: true };
   if (!force && !CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
   const handle = s.orca && s.orca.terminal;
-  if (!handle) return { ok: false, error: 'Orca 터미널 세션만 닫을 수 있어요' };
-  const chk = agentTerminal(handle);
-  if (!chk.ok) return chk;
+  if (!handle) return { ok: false, error: 'Orca 탭이 없는 세션이라 닫을 수 없어요 (그 Claude 창에서 /exit)' };
+  // 닫을 때는 에이전트가 돌든 말든 그 탭이 있으면 닫는다. 탭이 이미 없으면 끝난 것으로 본다.
+  let info;
+  try { info = orca(['terminal', 'show', '--terminal', handle], SHOW_MS); } catch (e) {
+    return { ok: false, error: e.timeout ? `Orca 가 ${SHOW_MS / 1000}초 안에 답하지 않았어요` : 'Orca 에 연결하지 못했어요 (Orca 가 켜져 있는지 확인)' };
+  }
+  if (!info || !info.ok) {
+    const code = info && info.error && info.error.code;
+    if (/stale|not_found|unknown/i.test(String(code))) { markEnded(sid); return { ok: true, already: true }; }
+    return { ok: false, error: orcaError(info) };
+  }
+  const shown = info.result && (info.result.terminal || info.result);
+  if (!shown || shown.handle !== handle) { markEnded(sid); return { ok: true, already: true }; }   // 다른 탭을 닫지 않게: 물은 그 탭일 때만
   let r;
   try { r = orca(['terminal', 'close', '--terminal', handle, '--tab'], SEND_MS); } catch (e) {
     return { ok: false, error: e.timeout ? 'Orca 가 답하지 않았어요' : '닫다 오류가 났어요: ' + String(e.message || e).slice(0, 160) };
   }
-  return r && r.ok ? { ok: true } : { ok: false, error: orcaError(r) };
+  if (r && r.ok) { markEnded(sid); return { ok: true }; }
+  return { ok: false, error: orcaError(r) };
+}
+// 탭을 강제로 닫으면 퇴장 훅이 안 불리므로 세션 기록(hook.js 의 sessions/<id>.json)에 끝났다고 바로 적는다
+function markEnded(sid) {
+  const file = path.join(ROOT, 'sessions', String(sid).replace(/[^A-Za-z0-9_-]/g, '_') + '.json');
+  const s = readJson(file, null);
+  if (!s) return;
+  const now = Date.now();
+  Object.assign(s, { state: 'ended', stateSince: now, endedAt: now, endReason: 'closed', updatedAt: now, eventAt: now });
+  try { writeAtomic(file, JSON.stringify(s)); } catch (_) {}
 }
 function closeSession(sid, force) {
   const s = (readState().sessions || []).find((x) => x.id === sid);
@@ -308,21 +328,59 @@ function closeSession(sid, force) {
   return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
 }
 
-// 다른 컴퓨터에서 받은 것 (sync.js): 고용·닫기·지시
+// ---------- 직원 이름 바꾸기 ----------
+// 그 세션에 /rename <이름> 을 넣어 Claude 세션 이름을 바꾸고(현황판 이름도 따라 바뀐다), Orca 탭 제목도 같이 바꾼다.
+function renameLocal(sid, name) {
+  name = cleanName(name);
+  if (!name) return { ok: false, error: '이름을 적어 주세요' };
+  const s = (readState().sessions || []).find((x) => x.id === sid && !x.machine);
+  if (!s) return { ok: false, error: '이 컴퓨터에서 그 세션을 찾지 못했어요' };
+  const handle = s.orca && s.orca.terminal;
+  if (!handle) return { ok: false, error: 'Orca 터미널에서 도는 세션만 이름을 바꿀 수 있어요' };
+  const r = deliverHandle(handle, '/rename ' + name);
+  if (!r.ok) return r;
+  try { orca(['terminal', 'rename', '--terminal', handle, '--title', name], SEND_MS); } catch (_) {}
+  return { ok: true, name };
+}
+function rename(sid, name) {
+  name = cleanName(name);
+  if (!name) return { ok: false, error: '이름을 적어 주세요' };
+  const s = (readState().sessions || []).find((x) => x.id === sid);
+  if (!s) return { ok: false, error: '그 세션을 찾지 못했어요' };
+  if (s.state === 'ended') return { ok: false, error: '이미 끝난 세션이에요' };
+  const id = crypto.randomBytes(6).toString('hex');
+  // text 는 옛 현황판(이름 바꾸기를 모르는 컴퓨터)이 받아도 지시로 넣어 똑같이 바뀌게
+  const base = { id, at: Date.now(), kind: 'rename', sid, title: s.title || '', room: s.room || '', text: '/rename ' + name, name };
+  if (s.machine) {
+    const sc = readJson(path.join(ROOT, 'sync.json'), null);
+    if (!sc || !sc.repo || !sc.push) return { ok: false, error: '이 컴퓨터는 동기화로 올리지 않게 되어 있어서 다른 컴퓨터 세션 이름은 못 바꿔요' };
+    fs.mkdirSync(OUTBOX, { recursive: true });
+    writeAtomic(path.join(OUTBOX, `${id}.json`), JSON.stringify(Object.assign({ to: machineKey(s.machine), toMachine: s.machine, from: myMachine() }, base)));
+    logAdd(Object.assign({ status: 'queued', toMachine: s.machine }, base));
+    return { ok: true, id, status: 'queued', toMachine: s.machine, name };
+  }
+  const res = renameLocal(sid, name);
+  logAdd(Object.assign({ status: res.ok ? 'delivered' : 'failed', error: res.error || '', doneAt: Date.now() }, base));
+  return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
+}
+
+// 다른 컴퓨터에서 받은 것 (sync.js): 고용·닫기·이름 바꾸기·지시
 function deliverInbound(m) {
   if (m.kind === 'hire') return hireLocal(m.roomLabel, m.name, m.cwd, m.prompt);
   if (m.kind === 'close') return closeLocal(m.sid, !!m.force);
+  if (m.kind === 'rename') return renameLocal(m.sid, m.name || String(m.text || '').replace(/^\/rename\s+/, ''));
   return deliverLocal(m.sid, m.text);
 }
 
-module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey };
+module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, rename, renameLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey };
 
 // 명령줄 (현황판 서버는 --json 을 붙여 따로 띄운 프로세스로 부른다)
 //   node send.js [--json] <세션ID> <지시>
 //   node send.js --hire [--json] <방> <이름> [-- <첫 지시>]
 //   node send.js --close [--json] [--force] <세션ID> [<세션ID> ...]   (--force = 해고: 상태와 상관없이)
+//   node send.js --rename [--json] <세션ID> <새 이름>
 if (require.main === module) {
-  const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : 'send';
+  const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : process.argv[2] === '--rename' ? 'rename' : 'send';
   let argv = process.argv.slice(mode === 'send' ? 2 : 3);
   const json = argv[0] === '--json';
   if (json) argv = argv.slice(1);
@@ -339,6 +397,10 @@ if (require.main === module) {
       const [room, ...rest] = head;
       r = room && rest.length ? hire(room, rest.join(' '), prompt) : { ok: false, error: '방과 이름이 필요해요' };
       done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 그 컴퓨터가 띄움)` : `고용했어요: ${x.name} (${x.folder})${x.promptError ? ' — ' + x.promptError : ''}`));
+    } else if (mode === 'rename') {
+      const [sid, ...rest] = argv;
+      r = sid && rest.length ? rename(sid, rest.join(' ')) : { ok: false, error: '세션과 새 이름이 필요해요' };
+      done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 바뀜)` : `이름을 바꿨어요: ${x.name}`));
     } else if (mode === 'close') {
       const force = argv[0] === '--force';
       if (force) argv = argv.slice(1);

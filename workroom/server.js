@@ -189,6 +189,16 @@ function handleSend(cfg, req, res, headers, pathname, u) {
       });
       return;
     }
+    if (pathname === '/__rename') {
+      // 직원 이름 바꾸기: 그 세션에 /rename (Orca 탭 제목도), 다른 컴퓨터 세션은 동기화로
+      const sid = String(j.sid || '').slice(0, 80), name = String(j.name || '').slice(0, 80);
+      if (!sid || !name.trim()) { sendJson(res, headers, 409, { ok: false, error: '세션과 새 이름이 필요해요' }); return; }
+      runChild(['--rename', '--json', sid, name], '이름 바꾸기').then((r) => {
+        if (r.ok && r.status === 'delivered') { rebuildSoon(); setTimeout(rebuildSoon, 8000); }
+        sendJson(res, headers, r.ok ? 200 : 409, r);
+      });
+      return;
+    }
     if (pathname === '/__tasks') {
       board.handle(runChild, j).then((r) => sendJson(res, headers, r.ok ? 200 : 409, r), () => sendJson(res, headers, 500, { ok: false, error: '일감을 처리하지 못했어요' }));
       return;
@@ -232,7 +242,7 @@ function serve(cfg) {
     }
     if (pathname === '/__tasks' && req.method === 'GET') { sendJson(res, headers, 200, Object.assign({ ok: true }, board.load())); return; }
     if (pathname === '/__acks' && req.method === 'GET') { sendJson(res, headers, 200, { ok: true, acks: acks.merged() }); return; }
-    if (/^\/__(send|sends|hire|close|tasks|ack)$/.test(pathname)) { handleSend(cfg, req, res, headers, pathname, u); return; }
+    if (/^\/__(send|sends|hire|close|tasks|ack|rename)$/.test(pathname)) { handleSend(cfg, req, res, headers, pathname, u); return; }
     if (pathname === '/') {
       // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
       res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();

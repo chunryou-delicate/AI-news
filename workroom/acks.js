@@ -12,6 +12,8 @@ const ROOT = __dirname;
 const FILE = path.join(ROOT, 'acks.json');
 const REMOTE_DIR = path.join(ROOT, 'remote');
 const KEEP = 3 * 24 * 3600 * 1000;
+const FIRE_KEEP = 30 * 24 * 3600 * 1000;   // 'fire:<세션id>' = 임시 해고(현황판에서 숨김)는 30일
+const keepOf = (k) => (String(k).startsWith('fire:') ? FIRE_KEEP : KEEP);
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
@@ -29,7 +31,7 @@ function own() {
 function set(keys, on) {
   const d = own(), now = Date.now();
   for (const k of keys || []) if (typeof k === 'string' && k && k.length < 200) d[k] = { on: !!on, at: now };
-  for (const k of Object.keys(d)) if (now - (d[k].at || 0) > KEEP) delete d[k];
+  for (const k of Object.keys(d)) if (now - (d[k].at || 0) > keepOf(k)) delete d[k];
   writeAtomic(FILE, JSON.stringify(d));
   return d;
 }
@@ -46,7 +48,7 @@ function merged() {
   for (const m of maps) {
     for (const k of Object.keys(m)) {
       const v = m[k];
-      if (!v || typeof v.at !== 'number' || now - v.at > KEEP) continue;
+      if (!v || typeof v.at !== 'number' || now - v.at > keepOf(k)) continue;
       if (!best[k] || v.at > best[k].at) best[k] = v;
     }
   }
