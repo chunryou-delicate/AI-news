@@ -12,6 +12,7 @@
 //   열쇠가 맞고 X-Workroom: send 머리글이 붙은 POST 만 받는다 (다른 사이트가 몰래 보내지 못하게).
 //   Orca 가 느린 컴퓨터에서도 서버가 멈추지 않게 send.js 를 따로 띄운 프로세스로 한 번에 하나씩 돌린다.
 // 사람 고용(/__hire): 방 패널에서 이름을 적으면 send.js --hire 로 그 방 프로젝트 폴더에 새 Claude 세션을 띄운다 (같은 열쇠·머리글·순서).
+// 세션 정리(/__close), 일감 보드·예약(/__tasks, board.js), 텔레그램 알림(notify.js, notify.json 이 있을 때만)도 여기서 돈다.
 //   server.json 에 "send": false 를 두면 끈다. (고용도 함께 꺼진다)
 
 const http = require('http');
@@ -23,7 +24,7 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const CFG_FILE = path.join(ROOT, 'server.json');
 const PAGE = '/현황판.html';
-const ALLOWED = /^\/(현황판\.html|office3d\.js|state\.js|speech\.js|logs\/r[0-9a-f]+\.js|models\/p\d+\.js|minutes-index\.js|minutes-js\/[a-z0-9-]+\.js)$/;
+const ALLOWED = /^\/(현황판\.html|office3d\.js|state\.js|speech\.js|logs\/r[0-9a-f]+\.js|models\/p\d+\.js|minutes-index\.js|minutes-js\/[a-z0-9-]+\.js|activity\.js)$/;
 const CACHED = /^\/models\//;   // 3D 사람 모델은 크고 잘 안 바뀌어서 폰이 기억해 두게 한다 (바뀌면 ?v= 를 올린다)
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
@@ -103,14 +104,15 @@ function sendJson(res, headers, code, obj) {
 }
 // 지시 보내기·사람 고용은 한 번에 하나씩, 따로 띄운 node 프로세스로 (기다리는 동안에도 현황판 파일은 계속 나간다)
 let sendChain = Promise.resolve();
-function sendInChild(args, what) {
+function sendInChild(args, what, limitMs) {
   const job = () => new Promise((resolve) => {
     let out = '', done = false, timer = null, child = null;
     const finish = (r) => { if (done) return; done = true; clearTimeout(timer); resolve(r); };
     try {
       child = require('child_process').spawn(process.execPath, [path.join(ROOT, 'send.js')].concat(args), { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (_) { finish({ ok: false, error: `${what} 프로세스를 띄우지 못했어요` }); return; }
-    timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish({ ok: false, error: `${what}가 2분 안에 끝나지 않았어요 (Orca 가 느려요)` }); }, 120 * 1000);
+    const limit = limitMs || 120 * 1000;
+    timer = setTimeout(() => { try { child.kill(); } catch (_) {} finish({ ok: false, error: `${what}가 ${Math.round(limit / 60000)}분 안에 끝나지 않았어요 (Orca 가 느려요)` }); }, limit);
     child.stdout.on('data', (c) => { out += c; });
     child.on('error', () => finish({ ok: false, error: `${what} 프로세스를 띄우지 못했어요` }));
     // 'close' 는 하위 프로세스가 파이프를 쥐고 있으면 늦게 오므로 'exit' 에서 마무리한다
@@ -122,6 +124,12 @@ function sendInChild(args, what) {
   const p = sendChain.then(job, job);
   sendChain = p.catch(() => {});
   return p;
+}
+const HIRE_MS = 4 * 60 * 1000;   // 고용하며 첫 지시까지 넣을 때 (Claude 가 뜰 때까지 기다린다)
+const board = require('./board.js');
+// send.js 를 따로 띄워 돌리고, 다른 컴퓨터로 가는 것이면 동기화를 한 번 돌린다 (고용·일감 보드·알림이 쓴다)
+function runChild(args, what) {
+  return sendInChild(args, what, args[0] === '--hire' ? HIRE_MS : 0).then((r) => { syncSoon(r); return r; });
 }
 // 다른 컴퓨터로 가는 것은 바로 동기화를 한 번 돌려 빨리 올린다
 function syncSoon(r) {
@@ -145,10 +153,24 @@ function handleSend(cfg, req, res, headers, pathname, u) {
     let j;
     try { j = JSON.parse(body); } catch (_) { sendJson(res, headers, 400, { ok: false, error: '잘못된 요청' }); return; }
     if (pathname === '/__hire') {
-      // 사람 고용: 그 방 프로젝트 폴더에 새 Claude 세션 (이름 = 세션 이름·Orca 탭 제목)
-      const room = String(j.room || '').slice(0, 120), name = String(j.name || '').slice(0, 80);
+      // 사람 고용: 그 방 프로젝트 폴더에 새 Claude 세션 (이름 = 세션 이름·Orca 탭 제목), prompt 가 있으면 첫 지시로
+      const room = String(j.room || '').slice(0, 120), name = String(j.name || '').slice(0, 80), prompt = String(j.prompt || '').slice(0, 2000);
       if (!room || !name.trim()) { sendJson(res, headers, 409, { ok: false, error: '방과 이름이 필요해요' }); return; }
-      sendInChild(['--hire', '--json', room, name], '고용').then((r) => { syncSoon(r); sendJson(res, headers, r.ok ? 200 : 409, r); });
+      runChild(['--hire', '--json', room, name].concat(prompt.trim() ? ['--', prompt] : []), '고용').then((r) => sendJson(res, headers, r.ok ? 200 : 409, r));
+      return;
+    }
+    if (pathname === '/__close') {
+      // 세션 정리: 다 끝났거나 놀고 있는 세션의 Orca 탭 닫기 (send.js 가 일하는 중·답 기다리는 세션은 거른다)
+      const sids = (Array.isArray(j.sids) ? j.sids : []).map((x) => String(x).slice(0, 80)).filter(Boolean).slice(0, 40);
+      if (!sids.length) { sendJson(res, headers, 409, { ok: false, error: '닫을 세션을 골라 주세요' }); return; }
+      sendInChild(['--close', '--json'].concat(sids), '닫기', 5 * 60 * 1000).then((r) => {
+        if (r.results && r.results.some((x) => x.status === 'queued')) syncSoon({ ok: true, status: 'queued' });
+        sendJson(res, headers, r.ok ? 200 : 409, r);
+      });
+      return;
+    }
+    if (pathname === '/__tasks') {
+      board.handle(runChild, j).then((r) => sendJson(res, headers, r.ok ? 200 : 409, r), () => sendJson(res, headers, 500, { ok: false, error: '일감을 처리하지 못했어요' }));
       return;
     }
     const sid = String(j.sid || ''), text = String(j.text || '').slice(0, 2000);
@@ -179,7 +201,8 @@ function serve(cfg) {
       setTimeout(() => process.exit(0), 100);
       return;
     }
-    if (pathname === '/__send' || pathname === '/__sends' || pathname === '/__hire') { handleSend(cfg, req, res, headers, pathname, u); return; }
+    if (pathname === '/__tasks' && req.method === 'GET') { sendJson(res, headers, 200, Object.assign({ ok: true }, board.load())); return; }
+    if (/^\/__(send|sends|hire|close|tasks)$/.test(pathname)) { handleSend(cfg, req, res, headers, pathname, u); return; }
     if (pathname === '/') {
       // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
       res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();
@@ -199,6 +222,11 @@ function serve(cfg) {
   server.listen(cfg.port, cfg.host, () => {
     for (const l of links(cfg)) console.log(l);
     keepSyncing();
+    // 일감 보드의 예약 업무·상태 맞추기, 텔레그램 알림(notify.json 이 있을 때만). 지시 보내기를 꺼 두었으면 둘 다 쉰다.
+    if (cfg.send !== false) {
+      board.start(runChild);
+      require('./notify.js').start((sid, text) => runChild(['--json', sid, text], '보내기'));
+    }
   });
 }
 

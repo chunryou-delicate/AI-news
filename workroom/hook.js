@@ -578,7 +578,78 @@ function rebuildMinutesTree() {
   // 지금 목록에 없는 날짜 파일은 지운다
   try { for (const f of fs.readdirSync(DAYS_DIR)) if (f.endsWith('.js') && !keep.has(f.slice(0, -3))) fs.unlinkSync(path.join(DAYS_DIR, f)); } catch (_) {}
   writeAtomic(MIN_INDEX, `window.__WORKROOM_MINUTES__ = ${JSON.stringify({ generatedAt: Date.now(), today, machines })};\n`);
+  try { buildActivity(machines, today); } catch (e) { logError(e); }
 }
+// ---------- 활동 집계 (현황판 '보고' 탭: 하루 요약·시간대 히트맵) ----------
+// 컴퓨터 ▸ 방 ▸ 날짜마다 요청·답 수, 시간대별 활동, 커밋 수, 사람마다 마지막 답 앞부분. 최근 14일, activity.js 로.
+// 원본 파일(이 컴퓨터 jsonl · 다른 컴퓨터 보관 md · 다른 컴퓨터 오늘 실시간 로그)이 바뀐 것만 다시 센다 (activity-cache.json).
+const ACTIVITY_FILE = path.join(ROOT, 'activity.js');
+const ACTIVITY_CACHE = path.join(ROOT, 'activity-cache.json');
+const ACTIVITY_DAYS = 14;
+function summarizeDay(entries, day) {
+  const hours = new Array(24).fill(0);
+  const people = {};
+  let ask = 0, say = 0, commits = 0;
+  for (const e of mergeSay(entries)) {
+    if (!e || !e.t || dayStr(e.t) !== day) continue;
+    const h = new Date(e.t).getHours();
+    if (e.kind === 'ask') { ask++; hours[h]++; }
+    else if (e.kind === 'say') {
+      say++; hours[h]++;
+      const p = people[e.who || '?'] || (people[e.who || '?'] = { n: 0, t: 0, last: '' });
+      p.n++;
+      if (e.t >= p.t) { p.t = e.t; p.last = clip(e.text, 160); }
+    } else if (e.kind === 'state') {
+      const m = String(e.text || '').match(/^커밋 (\d+)개/);
+      if (m) commits += Number(m[1]);
+    } else if (e.kind === 'order' || e.kind === 'report' || e.kind === 'msg') hours[h]++;
+  }
+  const top = Object.keys(people).map((who) => Object.assign({ who }, people[who])).sort((a, b) => b.t - a.t).slice(0, 8);
+  return { ask, say, commits, hours, people: top };
+}
+function buildActivity(machines, today) {
+  const cache = readJson(ACTIVITY_CACHE, {});
+  const fresh = {};
+  const since = dayStr(Date.now() - (ACTIVITY_DAYS - 1) * 24 * HOUR);
+  const own = readJson(SYNC_FILE, null) || {};
+  const days = {};
+  for (const m of machines) {
+    const base = m.self ? MINUTES_DIR : path.join(ARCH_MIN_DIR, m.name);
+    for (const r of m.rooms) {
+      for (const d of r.days) {
+        if (d.d < since) continue;
+        // 원본: 이 컴퓨터는 jsonl, 다른 컴퓨터 오늘은 실시간 로그(있으면), 그 밖에는 보관 md
+        let src, kind;
+        if (m.self) { src = path.join(base, r.name, `${d.d}.jsonl`); kind = 'jsonl'; }
+        else if (d.d === today && r.live) { src = path.join(LOGS_DIR, `${r.live}.js`); kind = 'log'; }
+        else { src = path.join(base, r.name, `${d.d}.md`); kind = 'md'; }
+        const ck = `${m.name}|${r.name}|${d.d}`, v = mtimeOf(src);
+        let sum = cache[ck] && cache[ck].v === v ? cache[ck].sum : null;
+        if (!sum) {
+          try {
+            let entries = [];
+            if (kind === 'jsonl') entries = readTailEntries(src, 64 * 1024 * 1024, 200000);
+            else if (kind === 'md') entries = parseMinutesMd(fs.readFileSync(src, 'utf8'), d.d);
+            else {
+              const t = fs.readFileSync(src, 'utf8');
+              entries = (JSON.parse(t.slice(t.indexOf('] = ') + 4, t.lastIndexOf('}') + 1)) || {}).entries || [];
+            }
+            sum = summarizeDay(entries, d.d);
+          } catch (e) { continue; }
+        }
+        fresh[ck] = { v, sum };
+        if (!sum.ask && !sum.say && !sum.commits) continue;
+        const day = days[d.d] || (days[d.d] = {});
+        const mach = day[m.name] || (day[m.name] = { name: m.name, self: !!m.self, rooms: [] });
+        mach.rooms.push(Object.assign({ name: r.name }, sum));
+      }
+    }
+  }
+  writeAtomic(ACTIVITY_CACHE, JSON.stringify(fresh));
+  const list = Object.keys(days).sort().reverse().map((d) => ({ d, machines: Object.values(days[d]) }));
+  writeAtomic(ACTIVITY_FILE, `window.__WORKROOM_ACTIVITY__ = ${JSON.stringify({ generatedAt: Date.now(), today, self: own.machine || '', days: list })};\n`);
+}
+
 // 훅 이벤트 때는 1분에 한 번만 (날짜가 바뀌면 바로)
 function maybeRebuildMinutesTree() {
   try {
@@ -605,6 +676,84 @@ function cleanupMinutes() {
       }
     }
   } catch (e) { logError(e); }
+}
+
+// ---------- 완료 보고에 붙일 변경 요약 (git) ----------
+// 요청을 받을 때 HEAD 를 적어 두고, 차례를 마칠 때 그 뒤로 생긴 커밋·바뀐 줄과 아직 커밋하지 않은 파일 수를 센다.
+function gitOut(cwd, args) {
+  try {
+    return require('child_process').execFileSync('git', ['-C', cwd].concat(args),
+      { encoding: 'utf8', timeout: 2000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch (_) { return null; }
+}
+function gitHead(cwd) { return cwd ? gitOut(cwd, ['rev-parse', 'HEAD']) : null; }
+function gitSummary(cwd, base) {
+  const head = gitHead(cwd);
+  if (!head) return null;
+  const out = { head: head.slice(0, 7), commits: 0, files: 0, ins: 0, del: 0, dirty: 0, subject: '' };
+  if (base && base !== head) {
+    out.commits = Number(gitOut(cwd, ['rev-list', '--count', `${base}..${head}`])) || 0;
+    const st = gitOut(cwd, ['diff', '--shortstat', base, head]) || '';
+    out.files = Number((st.match(/(\d+) files? changed/) || [])[1]) || 0;
+    out.ins = Number((st.match(/(\d+) insertions?/) || [])[1]) || 0;
+    out.del = Number((st.match(/(\d+) deletions?/) || [])[1]) || 0;
+    out.subject = clip(gitOut(cwd, ['log', '-1', '--format=%s']) || '', 80);
+  }
+  const por = gitOut(cwd, ['status', '--porcelain']);
+  out.dirty = por ? por.split('\n').filter(Boolean).length : 0;
+  return out;
+}
+function gitLine(g) {
+  if (!g || !g.commits) return '';
+  return `커밋 ${g.commits}개 · 파일 ${g.files}개 (+${g.ins} −${g.del})${g.subject ? ' · ' + g.subject : ''}`;
+}
+
+// ---------- 사용량 ----------
+// 컨텍스트: 상태줄 기록(usage/<세션>.json, statusline.js)이 있으면 그것, 없으면 transcript 마지막 응답의 입력 토큰으로 어림한다.
+// 5시간·7일 한도는 상태줄 기록에만 있다 (node install-hooks.js --statusline 로 켠 컴퓨터).
+const USAGE_DIR = path.join(ROOT, 'usage');
+function contextOf(transcriptPath) {
+  if (!transcriptPath) return null;
+  let fd;
+  try {
+    fd = fs.openSync(transcriptPath, 'r');
+    const size = fs.fstatSync(fd).size, len = Math.min(size, 512 * 1024);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    const lines = buf.toString('utf8').split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].indexOf('"usage"') < 0) continue;
+      let o; try { o = JSON.parse(lines[i]); } catch (_) { continue; }
+      const u = o && o.message && o.message.usage;
+      if (o.type !== 'assistant' || !u) continue;
+      const tokens = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+      return { tokens, model: String(o.message.model || '') };
+    }
+  } catch (_) {
+  } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch (_) {} }
+  return null;
+}
+function readUsage(now) {
+  const bySid = {};
+  let latest = null;
+  let names = [];
+  try { names = fs.readdirSync(USAGE_DIR).filter((f) => f.endsWith('.json')); } catch (_) { return { bySid, machine: null }; }
+  for (const f of names) {
+    const full = path.join(USAGE_DIR, f), u = readJson(full, null);
+    if (!u || !u.sid) continue;
+    if (now - (u.t || 0) > 2 * 24 * HOUR) { try { fs.unlinkSync(full); } catch (_) {} continue; }
+    bySid[u.sid] = u;
+    if ((u.five || u.seven) && (!latest || u.t > latest.t)) latest = u;
+  }
+  const machine = latest ? { five: latest.five, seven: latest.seven, at: latest.t } : null;
+  return { bySid, machine };
+}
+// 세션 하나의 컨텍스트: { pct, tokens, size } (pct 는 창 크기를 알 때만)
+function ctxFor(s, u) {
+  if (u && u.ctx && (!s.ctx || (u.t || 0) >= (s.ctx.at || 0))) return { pct: Math.round(u.ctx.pct), tokens: u.ctx.tokens || 0, size: u.ctx.size || 0 };
+  if (!s.ctx || !s.ctx.tokens) return null;
+  // 창 크기를 모르면(모델마다 20만·100만) 퍼센트는 빼고 토큰 수만
+  return { pct: null, tokens: s.ctx.tokens, size: 0, guess: true };
 }
 
 // ---------- 훅 이벤트 처리 ----------
@@ -664,6 +813,7 @@ function handleEvent(input) {
         s.lastPrompt = clip(input.prompt, 200);
       }
       s.promptAt = startedAt;
+      s.gitBase = gitHead(s.cwd) || '';
       s.tool = '';
       s.waitingFor = '';
       s.ask = '';
@@ -707,6 +857,12 @@ function handleEvent(input) {
         const ak = askKind(input.last_assistant_message);
         s.ask = ak.kind;
         s.askText = clip(ak.text, 160);
+      }
+      {
+        const g = gitSummary(s.cwd, s.gitBase);
+        if (g) s.git = Object.assign(g, { at: startedAt });
+        const c = contextOf(s.transcriptPath);
+        if (c) s.ctx = Object.assign(c, { at: startedAt });
       }
       break;
     case 'StopFailure':
@@ -752,6 +908,8 @@ function handleEvent(input) {
   // 회의록
   try {
     const entries = collectEntries(ev, input, s, speakerFor(s));
+    // 이번 차례에 커밋이 있었으면 회의록에 한 줄 (하루 요약의 커밋 수도 이걸 센다)
+    if (ev === 'Stop' && s.git && s.git.at === startedAt && s.git.commits) entries.push({ t: startedAt, sid: s.id, who: speakerFor(s).who, kind: 'state', text: gitLine(s.git) });
     if (entries.length || ev === 'Stop') {
       const room = roomNameFor(s.cwd, loadRooms());
       appendEntries(room, entries);
@@ -898,7 +1056,7 @@ function readRemote(now) {
     if (age > 6 * HOUR) continue;
     const machine = clip(text(meta.machine), 30) || d;
     const prefix = (name) => `${machine} · ${name}`;
-    out.machines.push({ name: machine, key: d, generatedAt: meta.generatedAt || 0 });
+    out.machines.push({ name: machine, key: d, generatedAt: meta.generatedAt || 0, usage: st.usage || null });
     const used = new Set();
     for (const s of st.sessions || []) {
       if (s.state === 'ended') continue;
@@ -918,6 +1076,7 @@ function rebuild() {
   const R = loadRooms();
   const { rooms, other } = R;
   const registry = readRegistry();
+  const usage = readUsage(now);
   const cache = readJson(CACHE_FILE, {});
   let cacheDirty = false;
   const sessions = [];
@@ -950,7 +1109,7 @@ function rebuild() {
     if (state === 'ended' && now - (s.endedAt || s.updatedAt || 0) > ENDED_VISIBLE_MS) continue;
 
     seen.add(s.id);
-    sessions.push(publicSession(s, state, quiet, reg, R));
+    sessions.push(publicSession(s, state, quiet, reg, R, usage));
   }
 
   // 훅 기록은 없지만 Claude Code 가 실행 중이라고 알려 주는 세션도 보여 준다.
@@ -972,7 +1131,7 @@ function rebuild() {
       updatedAt: reg.statusUpdatedAt,
     };
     const state = reg.status === 'busy' ? 'working' : 'idle';
-    sessions.push(publicSession(s, state, false, reg, R));
+    sessions.push(publicSession(s, state, false, reg, R, usage));
   }
 
   if (cacheDirty) {
@@ -999,6 +1158,7 @@ function rebuild() {
     sessions: sessions.concat(remote.sessions),
     meetings: meetings.concat(remote.meetings),
     machines: remote.machines,
+    usage: usage.machine,
     sync: readJson(SYNC_STATUS, null),
   };
   writeAtomic(STATE_FILE, `window.__WORKROOM__ = ${JSON.stringify(payload)};\n`);
@@ -1082,7 +1242,7 @@ function readMeetings(now, sessions) {
   return out;
 }
 
-function publicSession(s, state, quiet, reg, R) {
+function publicSession(s, state, quiet, reg, R, usage) {
   const folder = String(s.cwd || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
   // SubagentStop 을 놓친 워커가 계속 남지 않도록, 끝난 세션이거나 6시간 넘은 워커는 뺀다.
   const subagents = state === 'ended' ? [] : Object.values(s.subagents || {})
@@ -1109,6 +1269,8 @@ function publicSession(s, state, quiet, reg, R) {
     errorText: s.errorText || '',
     subagents,
     orca: s.orca || null,
+    git: s.git ? { head: s.git.head, commits: s.git.commits, files: s.git.files, ins: s.git.ins, del: s.git.del, dirty: s.git.dirty, subject: s.git.subject, at: s.git.at } : null,
+    ctx: ctxFor(s, usage && usage.bySid[s.id]),
     viaRegistryOnly: !s.lastEvent,
     app: reg && reg.entrypoint === 'sdk-ts' ? 'chat' : 'terminal',
   };

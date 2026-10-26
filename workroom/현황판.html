@@ -513,7 +513,101 @@
   .dock-pos:hover { background: var(--panel-2); color: var(--ink); }
   aside[data-tab="todo"] [data-pane]:not([data-pane="todo"]),
   aside[data-tab="staff"] [data-pane]:not([data-pane="staff"]),
-  aside[data-tab="minutes"] [data-pane]:not([data-pane="minutes"]) { display: none; }
+  aside[data-tab="minutes"] [data-pane]:not([data-pane="minutes"]),
+  aside[data-tab="board"] [data-pane]:not([data-pane="board"]),
+  aside[data-tab="report"] [data-pane]:not([data-pane="report"]) { display: none; }
+  /* 탭이 다섯이라 좁은 메뉴에서는 짧은 이름 (메뉴 막대 폭 기준. aside 에 걸면 아래 메뉴의 fixed 위치가 aside 기준이 돼 버린다) */
+  .dock { container-type: inline-size; }
+  .dock-tab .tl-short { display: none; }
+  @container (max-width: 440px) { .dock-tab .tl-long { display: none; } .dock-tab .tl-short { display: inline; } .dock-tab { padding: 8px 2px; font-size: 12.5px; gap: 3px; } .dock-tab b { min-width: 16px; padding: 0 4px; } }
+  body.file-mode .server-only { display: none !important; }
+  body.file-mode .server-only-note { display: block !important; }
+  /* 카드에서 바로 답하기 (두 번 눌러야 보낸다) */
+  .todo-li.has-qr .item { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .todo-li.has-qr .row3, .todo-li.has-qr .row2:last-child { padding-right: 0; }
+  .qr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 5px 62px 6px 9px; border: 1px solid var(--line); border-top: 0; border-left: 4px solid var(--qc, var(--line)); border-radius: 0 0 8px 8px; background: var(--panel-2); }
+  .qr button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 1px 9px; font: inherit; font-size: 11.5px; cursor: pointer; white-space: nowrap; }
+  .qr button:hover { border-color: var(--muted); }
+  .qr button.armed { background: var(--done); border-color: var(--done); color: #fff; font-weight: 700; }
+  .qr-input { display: flex; gap: 4px; width: 100%; }
+  .qr-input input { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .qr-note { width: 100%; font-size: 11.5px; color: var(--muted); }
+  .qr-note.err { color: var(--approval); font-weight: 600; }
+  .item .row4 { margin-top: 2px; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .row4 b { color: var(--working); font-weight: 700; }
+  /* 직원 탭 도구: 다른 컴퓨터 업데이트·세션 정리 */
+  .staff-tools { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px 0; }
+  .staff-tools .mini-btn[aria-expanded="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .tool-panel { margin: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); font-size: 12.5px; }
+  .tool-panel h4 { margin: 0 0 6px; font-size: 13px; }
+  .tool-panel textarea, .task-form textarea, .sched-form textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12.5px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .tool-panel select, .task-form select, .sched-form select, .sched-form input, .task-assign select, .task-assign input { min-width: 0; font: inherit; font-size: 12.5px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .tool-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; min-width: 0; }
+  .tool-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tool-row select { flex: 1; }
+  .tool-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .tool-actions button, .task-act button, .sched-act button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .tool-actions button.primary, .task-act button.primary { background: var(--done); border-color: var(--done); color: #fff; }
+  .tool-actions button.danger, .task-act button.danger, .sched-act button.danger { color: var(--approval); }
+  .tool-actions button.armed, .task-act button.armed, .sched-act button.armed { background: var(--approval); border-color: var(--approval); color: #fff; }
+  .tool-note { margin-top: 6px; color: var(--muted); font-size: 12px; white-space: pre-line; }
+  /* 일감 보드·예약 */
+  .task-form, .sched-form { display: grid; gap: 6px; padding: 8px; }
+  .task-form > *, .sched-form > *, .task-form input, .sched-form input { min-width: 0; }
+  .task-form .send-row select, .sched-form .send-row select { flex: 1; }
+  .sched-form .send-row input { flex: 1; }
+  .task-form button, .sched-form button { border: 0; background: var(--done); color: #fff; border-radius: 8px; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+  .sched-when { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .sched-days { display: inline-flex; gap: 2px; }
+  .sched-days label { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 6px; font-size: 11.5px; cursor: pointer; user-select: none; }
+  .sched-days input { display: none; }
+  .sched-days label.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .task-cols { padding: 0 8px 8px; display: grid; gap: 6px; }
+  .task-col > h5 { margin: 6px 0 4px; font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .task-col > h5 i { width: 8px; height: 8px; border-radius: 2px; background: var(--tc); }
+  .task-col ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .task { border: 1px solid var(--line); border-left: 4px solid var(--tc); border-radius: 8px; background: var(--panel-2); padding: 6px 8px; font-size: 12.5px; }
+  .task b { display: block; font-size: 13px; overflow-wrap: anywhere; }
+  .task p { margin: 2px 0 0; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .task .task-meta { margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+  .task .task-meta a { color: var(--done); cursor: pointer; text-decoration: underline; }
+  .task .task-meta .err { color: var(--approval); }
+  .task-act, .sched-act { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .task-assign { display: grid; gap: 4px; margin-top: 5px; }
+  .task-assign .tool-row select, .task-assign .tool-row input { flex: 1; }
+  .sched-list { list-style: none; margin: 0; padding: 6px 8px 0; display: grid; gap: 5px; }
+  .sched-list li { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12.5px; background: var(--panel-2); }
+  .sched-list li.off { opacity: .55; }
+  .sched-list li .task-meta { margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+  .sched-list b { font-variant-numeric: tabular-nums; }
+  /* 보고: 사용량·하루 요약·히트맵 */
+  .usage-box { padding: 8px 10px; display: grid; gap: 10px; font-size: 12.5px; }
+  .u-mach > b { display: block; margin-bottom: 3px; }
+  .u-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+  .u-bar { height: 8px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+  .u-bar i { display: block; height: 100%; background: var(--working); }
+  .u-bar i.warn { background: var(--question); }
+  .u-bar i.hot { background: var(--approval); }
+  .u-row em { font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .u-ctx { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+  .u-ctx li { display: flex; gap: 6px; font-size: 12px; cursor: pointer; }
+  .u-ctx li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .day-nav { display: flex; align-items: center; gap: 6px; padding: 8px 10px 0; }
+  .day-nav b { flex: 1; text-align: center; font-size: 13px; }
+  .daily { list-style: none; margin: 0; padding: 6px 8px 8px; }
+  .daily ul { list-style: none; margin: 0; padding: 0 0 0 14px; }
+  .d-room { padding: 4px 6px 6px; border-bottom: 1px dashed var(--line); }
+  .d-room:last-child { border-bottom: 0; }
+  .d-room > div { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; }
+  .d-room > div b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-room > div em { font-style: normal; color: var(--muted); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .d-room p { margin: 2px 0 0; font-size: 12px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .d-room p strong { color: var(--ink); font-weight: 700; }
+  .heat { padding: 6px 10px 10px; overflow-x: auto; }
+  .heat-grid { display: grid; grid-template-columns: 40px repeat(24, minmax(9px, 1fr)); gap: 2px; font-size: 10px; color: var(--muted); min-width: 300px; }
+  .heat-grid i { aspect-ratio: 1; border-radius: 2px; background: color-mix(in srgb, var(--working) calc(var(--v) * 100%), var(--panel-2)); }
+  .heat-grid span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .heat-grid .hh { text-align: center; }
   aside.folded .dock-body { display: none; }
   .mini-btn { flex: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 6px; padding: 1px 8px; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
   .mini-btn:hover { color: var(--ink); border-color: var(--muted); }
@@ -702,9 +796,11 @@
       <div class="side-grip" id="sideGrip" title="끌어서 패널 폭 바꾸기" role="separator" aria-orientation="vertical"></div>
       <!-- 패널 메뉴: 탭을 누르면 그 카드만, 같은 탭을 다시 누르면 접힘. ⤓/⤒ 로 메뉴를 화면 아래(떠 있는 막대)·패널 위로 옮긴다 -->
       <nav class="dock" id="dock" aria-label="패널 메뉴" role="tablist">
-        <button type="button" class="dock-tab" data-tab="todo" role="tab">확인할 일<b id="dockTodoN"></b></button>
+        <button type="button" class="dock-tab" data-tab="todo" role="tab" aria-label="확인할 일"><span class="tl-long">확인할 일</span><span class="tl-short">확인</span><b id="dockTodoN"></b></button>
         <button type="button" class="dock-tab" data-tab="staff" role="tab">직원<b id="dockStaffN"></b></button>
         <button type="button" class="dock-tab" data-tab="minutes" role="tab">회의록<b id="dockMinN"></b></button>
+        <button type="button" class="dock-tab" data-tab="board" role="tab">일감<b id="dockBoardN"></b></button>
+        <button type="button" class="dock-tab" data-tab="report" role="tab">보고<b id="dockReportN"></b></button>
         <button type="button" class="dock-pos" id="dockPos"></button>
       </nav>
       <div class="side dock-body" id="dockBody">
@@ -717,6 +813,8 @@
         <section class="card" data-pane="staff">
           <h2><button type="button" class="fold-h" data-fold="card:staff" aria-expanded="true">직원 <span class="n" id="staffN"></span></button></h2>
           <div class="staff-seg" id="staffSeg" role="group" aria-label="직원 보기"></div>
+          <div class="staff-tools server-only" id="staffTools"><button type="button" class="mini-btn" data-tool="update" aria-expanded="false">⟳ 다른 컴퓨터 업데이트</button><button type="button" class="mini-btn" data-tool="cleanup" aria-expanded="false">🧹 세션 정리</button></div>
+          <div class="tool-panel" id="toolPanel" hidden></div>
           <ul class="staff" id="staff"></ul>
         </section>
         <section class="card tree-card" data-pane="minutes">
@@ -726,6 +824,40 @@
         <section class="card legend-card" data-pane="staff">
           <div class="legend" id="legend"></div>
           <p class="hint" id="legendHint"></p>
+        </section>
+        <section class="card" data-pane="board">
+          <h2><button type="button" class="fold-h" data-fold="card:board" aria-expanded="true">일감 <span class="n" id="boardN"></span></button></h2>
+          <p class="empty-note server-only-note" hidden>일감 보드는 서버로 연 현황판에서만 쓸 수 있어요.</p>
+          <form class="task-form server-only" id="taskForm">
+            <textarea id="taskText" rows="2" maxlength="1000" placeholder="할 일을 적어 두세요 (첫 줄이 제목)"></textarea>
+            <div class="send-row"><select id="taskRoom" aria-label="방"></select><button type="submit">추가</button></div>
+          </form>
+          <div class="task-cols server-only" id="taskCols"></div>
+        </section>
+        <section class="card" data-pane="board">
+          <h2><button type="button" class="fold-h" data-fold="card:sched" aria-expanded="true">예약 업무 <span class="n" id="schedN"></span></button></h2>
+          <p class="empty-note server-only-note" hidden>예약 업무는 서버로 연 현황판에서만 쓸 수 있어요.</p>
+          <ul class="sched-list server-only" id="schedList"></ul>
+          <form class="sched-form server-only" id="schedForm">
+            <div class="send-row"><select id="schedRoom" aria-label="방"></select><input id="schedWho" maxlength="40" placeholder="누구에게 (이름)" autocomplete="off"></div>
+            <textarea id="schedText" rows="2" maxlength="1000" placeholder="보낼 지시"></textarea>
+            <div class="sched-when"><input type="time" id="schedTime" value="09:00" aria-label="시각"><span class="sched-days" id="schedDays"></span><button type="submit">예약 추가</button></div>
+            <p class="send-note" id="schedNote">그 시각에 그 방에서 이름이 같은 사람에게 보내고, 없으면 그 이름으로 새로 고용하며 보내요. 현황판 서버가 켜져 있어야 해요.</p>
+          </form>
+        </section>
+        <section class="card" data-pane="report">
+          <h2><button type="button" class="fold-h" data-fold="card:usage" aria-expanded="true">사용량 <span class="n" id="usageN"></span></button></h2>
+          <div class="usage-box" id="usageBox"></div>
+        </section>
+        <section class="card" data-pane="report">
+          <h2><button type="button" class="fold-h" data-fold="card:daily" aria-expanded="true">하루 요약 <span class="n" id="dailyN"></span></button></h2>
+          <div class="day-nav" id="dayNav"></div>
+          <ul class="daily" id="dailyBox"></ul>
+        </section>
+        <section class="card" data-pane="report">
+          <h2><button type="button" class="fold-h" data-fold="card:heat" aria-expanded="true">활동 히트맵 <span class="n" id="heatN"></span></button></h2>
+          <div class="staff-seg" id="heatSeg"></div>
+          <div class="heat" id="heatBox"></div>
         </section>
       </div>
       <div class="side" id="sideRoom" hidden>
@@ -1702,9 +1834,12 @@
     document.getElementById('todoN').textContent = todoCount ? (todoFilter && !showAcked ? shownN + ' / ' : '') + todoCount + '건' : '';
     document.getElementById('todoBar').innerHTML = ackedItems.length ?
       '<button type="button" class="bar-btn" id="showAcked" aria-pressed="' + showAcked + '">' + (showAcked ? '확인할 일로 돌아가기' : '확인한 것 ' + ackedItems.length + '건 보기') + '</button>' : '';
-    document.getElementById('todo').innerHTML = html ||
+    var todoEl = document.getElementById('todo'), typing = document.activeElement && todoEl.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+    if (!typing) todoEl.innerHTML = html ||
       '<li class="empty-note">' + (todoFilter ? CAT[todoFilter].label + ' 항목이 없어요.' : '지금은 확인할 일이 없어요.') + '</li>';
     renderStaff(sessions, now);
+    renderReport(now);
+    renderBoard();
 
     if (openId) fillSheet(openId);
   }
@@ -2186,9 +2321,9 @@
     return (ageClass(t, now) === 'stale' ? '<span class="stale-tag">방치</span>' : '') + '<span class="ago">' + ago(t, now) + ' 전</span>';
   }
   // 확인할 일 카드 오른쪽 아래 단추 (치운 것을 보는 중이면 '되살리기')
-  function todoLi(ak, inner) {
+  function todoLi(ak, inner, extra) {
     var done = !!acked[ak];
-    return '<li class="todo-li' + (done ? ' acked' : '') + '">' + inner +
+    return '<li class="todo-li' + (done ? ' acked' : '') + (extra ? ' has-qr' : '') + '">' + inner + (extra || '') +
       '<button type="button" class="ack" data-ack="' + esc(ak) + '" title="' + (done ? '확인할 일로 되돌리기' : '확인했어요 — 목록에서 치우기 (상태가 바뀌면 다시 떠요)') + '">' + (done ? '되살리기' : '확인') + '</button></li>';
   }
   function meetingItemHtml(m, ak) {
@@ -2212,7 +2347,7 @@
       (roleOf[s.id] ? '<span>' + esc(roleOf[s.id]) + '</span>' : '') +
       (s.app === 'chat' ? '<span>채팅</span>' : '') + (subs ? '<span>워커 ' + subs + '</span>' : '') + agoHtml(s.stateSince, now) + '</div>' +
       '<div class="row2">' + esc(titleOf(s)) + '</div>' +
-      (detail ? '<div class="row3">' + esc(detail) + '</div>' : '') + '</button>');
+      (detail ? '<div class="row3">' + esc(detail) + '</div>' : '') + gitRowHtml(s) + '</button>', qrHtml(s, cat));
   }
 
   // ---------- 직원 목록: 층(컴퓨터) ▸ 파트(방) ▸ 직원(세션) ----------
@@ -2235,7 +2370,7 @@
     var sub = [roleOf[s.id], s.app === 'chat' ? '채팅' : '', subs ? '워커 ' + subs : '', plain(detailLine(s), 90)].filter(Boolean).join(' · ');
     return '<li><button type="button" class="staff-row' + (s.state === 'working' ? ' working' : '') + (inf.calm ? ' calm' : '') + '" data-id="' + esc(s.id) + '" style="--sc:' + inf.color + '">' +
       '<span class="s-dot"></span><span class="s-name">' + esc(titleOf(s)) + '</span>' +
-      '<span class="s-st">' + inf.label + ' · ' + (ago(s.stateSince, now) || '방금') + '</span>' +
+      '<span class="s-st">' + inf.label + ' · ' + (ago(s.stateSince, now) || '방금') + (s.ctx && s.ctx.pct >= 50 ? ' · 컨텍스트 ' + ctxText(s.ctx) : '') + '</span>' +
       (sub ? '<span class="s-sub">' + esc(sub) + '</span>' : '') + '</button></li>';
   }
   function renderStaff(sessions, now) {
@@ -2291,12 +2426,481 @@
       }).join('');
       if (staffFilter === 'all' && empty.length) inner += '<li class="p-empty">빈 파트 ' + empty.length + ' · ' + esc(empty.map(function (p) { return p.label; }).join(' · ')) + '</li>';
       if (!inner) return;
-      html += multi ? '<li><button type="button" class="floor-h" data-fold="' + esc(ffk) + '" aria-expanded="' + !ffold + '"><span class="p-name">' + esc(f.name) + '</span><span class="n">' + n + '명</span></button>' +
+      html += multi ? '<li><button type="button" class="floor-h" data-fold="' + esc(ffk) + '" aria-expanded="' + !ffold + '"><span class="p-name">' + esc(f.name) + '</span><span class="n">' + (usageShort(f.m) ? usageShort(f.m) + ' · ' : '') + n + '명</span></button>' +
         (ffold ? '' : '<ul>' + inner + '</ul>') + '</li>' : inner;
     });
     var none = { all: '열려 있는 세션이 없어요.', working: '일하는 AI가 없어요.', turn: '내 차례인 세션이 없어요.', idle: '대기 중인 세션이 없어요.' };
     document.getElementById('staff').innerHTML = html || '<li class="empty-note">' + none[staffFilter] + '</li>';
   }
+
+  // ---------- 서버로 열었을 때만 되는 것 (지시 보내기·고용·일감·정리) ----------
+  var SERVER = /^https?:$/.test(location.protocol);
+  if (!SERVER) document.body.classList.add('file-mode');
+  function postJson(url, body) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }, function () { return { ok: false, error: '서버에 닿지 못했어요' }; })
+      .then(null, function () { return { ok: false, error: '답을 읽지 못했어요' }; });
+  }
+  function until(t, now) {
+    var m = Math.max(0, Math.round((t - now) / 60000));
+    return m < 60 ? m + '분' : m < 1440 ? Math.floor(m / 60) + '시간 ' + (m % 60) + '분' : Math.floor(m / 1440) + '일 ' + Math.floor((m % 1440) / 60) + '시간';
+  }
+  var WEEK = '일월화수목금토';
+
+  // ---------- 카드에서 바로 답하기 ----------
+  // 갈래마다 자주 쓰는 짧은 답. 실수로 보내지 않게 한 번 누르면 '한 번 더 →' 로 바뀌고 4초 안에 다시 눌러야 보낸다.
+  var QR = { approval: ['응 진행해', '아니, 하지 마'], question: ['알아서 판단해서 해'], report: ['이어서 진행해', '커밋하고 푸시해'], error: ['다시 해 봐'] };
+  var qrState = {};   // 세션 id → { armed: 번호, at, open: 직접 쓰기 칸, draft, note, err }
+  function qrHtml(s, cat) {
+    if (!SERVER || s.synthetic || showAcked || !QR[cat]) return '';
+    var q = qrState[s.id] || {}, armed = q.armed != null && Date.now() - q.at < 4000 ? q.armed : -1;
+    var btns = QR[cat].map(function (t, i) {
+      return '<button type="button" data-qr="' + esc(s.id) + '" data-qi="' + i + '" data-qc="' + cat + '"' + (armed === i ? ' class="armed"' : '') + '>' + (armed === i ? '한 번 더 → ' : '') + esc(t) + '</button>';
+    }).join('') + '<button type="button" data-qr-open="' + esc(s.id) + '">✎ 직접</button>';
+    var input = q.open ? '<form class="qr-input" data-qr-form="' + esc(s.id) + '"><input maxlength="1000" placeholder="이 세션에 보낼 말" value="' + esc(q.draft || '') + '"><button type="submit">보내기</button></form>' : '';
+    var note = q.note ? '<span class="qr-note' + (q.err ? ' err' : '') + '">' + esc(q.note) + '</span>' : '';
+    return '<div class="qr" style="--qc:' + CAT[cat].color + '">' + btns + input + note + '</div>';
+  }
+  function sendQuick(sid, text) {
+    var q = qrState[sid] = qrState[sid] || {};
+    q.armed = null; q.note = '보내는 중…'; q.err = false;
+    render();
+    postJson('__send', { sid: sid, text: text }).then(function (j) {
+      q.err = !j.ok;
+      q.note = j.ok ? (j.status === 'queued' ? j.toMachine + ' 로 보냈어요 (동기화 때 들어가요)' : '보냈어요: ' + text) : (j.error || '못 보냈어요');
+      if (j.ok) { q.open = false; q.draft = ''; }
+      render();
+    });
+  }
+  var todoBox = document.getElementById('todo');
+  todoBox.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-qr]');
+    if (b) {
+      e.stopPropagation();
+      var sid = b.getAttribute('data-qr'), i = Number(b.getAttribute('data-qi')), cat = b.getAttribute('data-qc');
+      var q = qrState[sid] = qrState[sid] || {};
+      if (q.armed === i && Date.now() - q.at < 4000) { sendQuick(sid, QR[cat][i]); return; }
+      q.armed = i; q.at = Date.now();
+      render();
+      setTimeout(render, 4100);
+      return;
+    }
+    var o = e.target.closest('[data-qr-open]');
+    if (o) {
+      e.stopPropagation();
+      var id = o.getAttribute('data-qr-open'), st = qrState[id] = qrState[id] || {};
+      st.open = !st.open;
+      render();
+      if (st.open) { var inp = todoBox.querySelector('[data-qr-form="' + CSS.escape(id) + '"] input'); if (inp) inp.focus(); }
+    }
+  });
+  todoBox.addEventListener('input', function (e) {
+    var f = e.target.closest('[data-qr-form]');
+    if (f) (qrState[f.getAttribute('data-qr-form')] = qrState[f.getAttribute('data-qr-form')] || {}).draft = e.target.value;
+  });
+  todoBox.addEventListener('submit', function (e) {
+    var f = e.target.closest('[data-qr-form]');
+    if (!f) return;
+    e.preventDefault();
+    var text = f.querySelector('input').value.trim();
+    if (text) { f.querySelector('input').blur(); sendQuick(f.getAttribute('data-qr-form'), text); }
+  });
+
+  // ---------- 변경 요약(git)·컨텍스트·사용량 ----------
+  function gitRowHtml(s) {
+    var g = s.git;
+    if (!g || (g.at || 0) < (s.stateSince || 0) - 10000) return '';
+    var p = [];
+    if (g.commits) p.push('<b>커밋 ' + g.commits + '</b> · 파일 ' + g.files + ' (+' + g.ins + ' −' + g.del + ')');
+    if (g.dirty) p.push('커밋 안 한 파일 ' + g.dirty);
+    return p.length ? '<div class="row4">⎇ ' + p.join(' · ') + '</div>' : '';
+  }
+  function gitSheet(g) {
+    return (g.commits ? '커밋 ' + g.commits + '개 · 파일 ' + g.files + '개 (+' + g.ins + ' −' + g.del + ')' + (g.subject ? ' · ' + g.subject : '') + ' · ' : '') +
+      'HEAD ' + g.head + (g.dirty ? ' · 커밋 안 한 파일 ' + g.dirty + '개' : '');
+  }
+  function ctxText(c) { return !c ? '' : c.pct == null ? '약 ' + Math.round((c.tokens || 0) / 1000) + 'k 토큰' : c.pct + '%'; }
+  function winOk(w) { return !!w && typeof w.pct === 'number' && (!w.resetsAt || w.resetsAt > Date.now()); }
+  // mach: '' = 이 컴퓨터, 아니면 다른 컴퓨터 이름
+  function usageFor(mach) {
+    var u = !mach ? data && data.usage : ((data && data.machines || []).filter(function (m) { return m.name === mach; })[0] || {}).usage;
+    return u && (winOk(u.five) || winOk(u.seven)) ? u : null;
+  }
+  function usageShort(mach) {
+    var u = usageFor(mach);
+    if (!u) return '';
+    return [winOk(u.five) ? '5시간 ' + Math.round(u.five.pct) + '%' : '', winOk(u.seven) ? '7일 ' + Math.round(u.seven.pct) + '%' : ''].filter(Boolean).join(' · ');
+  }
+  function renderUsage(now) {
+    var bar = function (label, w) {
+      if (!winOk(w)) return '';
+      var p = Math.round(w.pct);
+      return '<div class="u-row"><span>' + label + '</span><span class="u-bar"><i class="' + (p >= 90 ? 'hot' : p >= 70 ? 'warn' : '') + '" style="width:' + Math.min(100, p) + '%"></i></span>' +
+        '<em>' + p + '%' + (w.resetsAt ? ' · ' + until(w.resetsAt, now) + ' 뒤 초기화' : '') + '</em></div>';
+    };
+    var machs = [{ name: selfName() || '이 컴퓨터', key: '' }].concat((data.machines || []).map(function (m) { return { name: m.name, key: m.name }; }));
+    var any = false;
+    document.getElementById('usageBox').innerHTML = machs.map(function (m) {
+      var u = usageFor(m.key);
+      if (u) any = true;
+      var ctx = (data.sessions || []).filter(function (s) { return (s.machine || '') === m.key && s.state !== 'ended' && s.ctx && s.ctx.pct >= 60; })
+        .sort(function (a, b) { return b.ctx.pct - a.ctx.pct; }).slice(0, 5);
+      return '<div class="u-mach"><b>' + esc(m.name) + '</b>' + ((u ? bar('5시간', u.five) + bar('7일', u.seven) : '') || '<div class="u-row"><span></span><span>한도 기록 없음</span><em></em></div>') +
+        (ctx.length ? '<ul class="u-ctx">' + ctx.map(function (s) { return '<li data-id="' + esc(s.id) + '"><span>' + esc(titleOf(s)) + '</span><em>컨텍스트 ' + ctxText(s.ctx) + '</em></li>'; }).join('') + '</ul>' : '') + '</div>';
+    }).join('') + (any ? '' : '<p class="hint">5시간·7일 한도는 그 컴퓨터에서 <code>node ~/.claude/workroom/install-hooks.js --statusline</code> 을 한 번 하면 보여요 (원래 상태줄은 그대로 이어서 불러요). 컨텍스트는 그 전에도 어림해서 보여요.</p>');
+    document.getElementById('usageN').textContent = usageShort('');
+  }
+
+  // ---------- 보고: 하루 요약·활동 히트맵 (activity.js, hook.js 가 1분마다 만든다) ----------
+  var activity = null, dayIdx = 0, heatMach = '';
+  function loadActivity() {
+    var el = document.createElement('script');
+    el.src = 'activity.js?t=' + Date.now();
+    el.onload = el.onerror = function () { el.remove(); activity = window.__WORKROOM_ACTIVITY__ || activity; if (data) renderReport(Date.now()); };
+    document.head.appendChild(el);
+  }
+  loadActivity();
+  setInterval(loadActivity, 60000);
+  function dayLabel(d) {
+    if (!d) return '기록 없음';
+    var dt = new Date(d + 'T00:00:00'), y = new Date(Date.now() - 86400000);
+    var yd = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0');
+    return (activity && d === activity.today ? '오늘 · ' : d === yd ? '어제 · ' : '') + (dt.getMonth() + 1) + '월 ' + dt.getDate() + '일 (' + WEEK[dt.getDay()] + ')';
+  }
+  function sumOf(rooms) {
+    return rooms.reduce(function (a, r) { a.ask += r.ask; a.say += r.say; a.commits += r.commits; return a; }, { ask: 0, say: 0, commits: 0 });
+  }
+  function sumText(t) { return '요청 ' + t.ask + ' · 답 ' + t.say + (t.commits ? ' · 커밋 ' + t.commits : ''); }
+  function renderDaily() {
+    var days = (activity && activity.days) || [];
+    if (dayIdx >= days.length) dayIdx = Math.max(0, days.length - 1);
+    var d = days[dayIdx];
+    document.getElementById('dayNav').innerHTML = '<button type="button" class="mini-btn" data-day="1"' + (dayIdx >= days.length - 1 ? ' disabled' : '') + '>◀ 전날</button><b>' + esc(dayLabel(d && d.d)) + '</b>' +
+      '<button type="button" class="mini-btn" data-day="-1"' + (dayIdx <= 0 ? ' disabled' : '') + '>다음날 ▶</button>';
+    if (!d) { document.getElementById('dailyBox').innerHTML = '<li class="empty-note">아직 기록이 없어요.</li>'; document.getElementById('dailyN').textContent = ''; return; }
+    var machs = d.machines.slice().sort(function (a, b) { return (b.self ? 1 : 0) - (a.self ? 1 : 0) || a.name.localeCompare(b.name); });
+    var all = sumOf([].concat.apply([], machs.map(function (m) { return m.rooms; })));
+    document.getElementById('dailyN').textContent = sumText(all);
+    document.getElementById('dailyBox').innerHTML = machs.map(function (m) {
+      var fk = 'daily:' + m.name, f = !!fold[fk], t = sumOf(m.rooms);
+      var rooms = m.rooms.slice().sort(function (a, b) { return (b.ask + b.say) - (a.ask + a.say); });
+      return '<li><button type="button" class="floor-h" data-fold="' + esc(fk) + '" aria-expanded="' + !f + '"><span class="p-name">' + esc(m.name) + '</span><span class="n">' + sumText(t) + '</span></button>' +
+        (f ? '' : '<ul>' + rooms.map(function (r) {
+          var hs = r.hours.map(function (v, h) { return v ? h : -1; }).filter(function (h) { return h >= 0; });
+          var span = hs.length ? hs[0] + '~' + (hs[hs.length - 1] + 1) + '시' : '';
+          return '<li class="d-room"><div><b>' + esc(r.name) + '</b><em>' + sumText(r) + (span ? ' · ' + span : '') + '</em></div>' +
+            (r.people || []).slice(0, 3).map(function (p) { return '<p><strong>' + esc(p.who) + '</strong> ' + hm(p.t) + ' · ' + esc(p.last) + '</p>'; }).join('') + '</li>';
+        }).join('') + '</ul>') + '</li>';
+    }).join('');
+  }
+  function renderHeat() {
+    var days = ((activity && activity.days) || []).slice(0, 14);
+    var names = [];
+    days.forEach(function (d) { d.machines.forEach(function (m) { if (names.indexOf(m.name) < 0) names.push(m.name); }); });
+    if (heatMach && names.indexOf(heatMach) < 0) heatMach = '';
+    document.getElementById('heatSeg').innerHTML = [''].concat(names).map(function (n) {
+      return '<button type="button" data-heat="' + esc(n) + '" class="' + (heatMach === n ? 'on' : '') + '">' + esc(n || '전체') + '</button>';
+    }).join('');
+    // 최근 14일을 날짜마다 한 줄, 시간대마다 한 칸 (색이 진할수록 요청·답이 많았던 때)
+    var rows = [], max = 1, now = new Date();
+    for (var i = 0; i < 14; i++) {
+      var dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      var key = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+      var hours = new Array(24).fill(0), d = days.filter(function (x) { return x.d === key; })[0];
+      if (d) d.machines.forEach(function (m) { if (!heatMach || m.name === heatMach) m.rooms.forEach(function (r) { r.hours.forEach(function (v, h) { hours[h] += v; }); }); });
+      hours.forEach(function (v) { if (v > max) max = v; });
+      rows.push({ label: (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' + WEEK[dt.getDay()], hours: hours });
+    }
+    var total = rows.reduce(function (a, r) { return a + r.hours.reduce(function (x, y) { return x + y; }, 0); }, 0);
+    document.getElementById('heatN').textContent = total ? '14일 ' + total + '건' : '';
+    var head = '<span></span>' + new Array(24).fill(0).map(function (_, h) { return '<span class="hh">' + (h % 6 === 0 ? h : '') + '</span>'; }).join('');
+    document.getElementById('heatBox').innerHTML = '<div class="heat-grid">' + head + rows.map(function (r) {
+      return '<span>' + r.label + '</span>' + r.hours.map(function (v, h) { return '<i style="--v:' + (v ? Math.max(0.12, v / max).toFixed(2) : 0) + '" title="' + r.label + ' ' + h + '시 · ' + v + '건"></i>'; }).join('');
+    }).join('') + '</div>';
+  }
+  function renderReport(now) {
+    if (!data) return;
+    renderUsage(now);
+    renderDaily();
+    renderHeat();
+    var u = usageFor('');
+    var hot = u && [u.five, u.seven].some(function (w) { return winOk(w) && w.pct >= 80; });
+    var badge = document.getElementById('dockReportN');
+    badge.textContent = hot ? '!' : '';
+    badge.classList.toggle('hot', !!hot);
+  }
+  document.getElementById('dayNav').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-day]');
+    if (!b || b.disabled) return;
+    dayIdx = Math.max(0, dayIdx + Number(b.getAttribute('data-day')));
+    renderDaily();
+  });
+  document.getElementById('heatSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-heat]');
+    if (!b) return;
+    heatMach = b.getAttribute('data-heat');
+    renderHeat();
+  });
+
+  // ---------- 일감 보드·예약 업무 (board.js, 서버로 열었을 때만) ----------
+  var boardData = { tasks: [], schedules: [] }, assignOpen = {}, boardArm = {}, boardNote = {};
+  var TASK_COLS = [['todo', '할 일', 'var(--idle)'], ['doing', '진행 중', 'var(--working)'], ['review', '확인 대기', 'var(--question)'], ['done', '완료', 'var(--done)']];
+  function loadTasks() {
+    if (!SERVER) return;
+    fetch('__tasks', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j && j.ok) { boardData = { tasks: j.tasks || [], schedules: j.schedules || [] }; renderBoard(); }
+    }, function () {});
+  }
+  function postTask(body) {
+    return postJson('__tasks', body).then(function (j) {
+      if (j.tasks) boardData = { tasks: j.tasks, schedules: j.schedules || [] };
+      renderBoard();
+      return j;
+    });
+  }
+  loadTasks();
+  setInterval(function () { if (dock.tab === 'board' && !dock.folded) loadTasks(); }, 15000);
+  function roomOptions(sel, withNone) {
+    return (withNone ? '<option value="">방 미정</option>' : '') + roomsView().filter(function (r) { return r.kind !== 'lounge'; }).map(function (r) {
+      return '<option value="' + esc(r.name) + '"' + (r.name === sel ? ' selected' : '') + '>' + esc(r.name) + '</option>';
+    }).join('');
+  }
+  function fillSelect(id, withNone) {
+    var el = document.getElementById(id);
+    if (!el || el === document.activeElement) return;
+    var html = roomOptions(el.value, withNone);
+    if (el.getAttribute('data-html') !== html) { var v = el.value; el.innerHTML = html; el.value = v; el.setAttribute('data-html', html); }
+  }
+  function peopleIn(room) {
+    return (data && data.sessions || []).filter(function (s) { return s.room === room && s.state !== 'ended' && !s.synthetic; });
+  }
+  function taskHtml(t) {
+    var col = TASK_COLS.filter(function (c) { return c[0] === t.status; })[0] || TASK_COLS[0];
+    var s = t.sid && byId[t.sid], arm = boardArm[t.id] && Date.now() - boardArm[t.id] < 4000;
+    var meta = [t.room ? esc(t.room) : '방 미정'];
+    if (t.who) meta.push(esc(t.who));
+    if (s) meta.push('<a data-id="' + esc(s.id) + '">' + esc((CAT[catOf(s)] || STATE[s.state] || STATE.idle).label) + ' · ' + ago(s.stateSince, Date.now()) + ' 전</a>');
+    else if (t.status === 'doing' && t.hired) meta.push('고용하는 중' + (t.queued ? ' (다른 컴퓨터)' : ''));
+    if (t.error) meta.push('<span class="err">' + esc(t.error) + '</span>');
+    if (boardNote[t.id]) meta.push('<span class="' + (boardNote[t.id].err ? 'err' : '') + '">' + esc(boardNote[t.id].text) + '</span>');
+    var acts = [];
+    if (t.status === 'todo') acts.push('<button type="button" class="primary" data-task-act="open" data-task="' + t.id + '">보내기…</button>');
+    if (t.status !== 'done') acts.push('<button type="button" data-task-act="done" data-task="' + t.id + '">완료</button>');
+    if (t.status !== 'todo') acts.push('<button type="button" data-task-act="reopen" data-task="' + t.id + '">' + (t.status === 'done' ? '다시 열기' : '할 일로') + '</button>');
+    acts.push('<button type="button" class="danger' + (arm ? ' armed' : '') + '" data-task-act="delete" data-task="' + t.id + '">' + (arm ? '정말 지우기' : '지우기') + '</button>');
+    var a = assignOpen[t.id], assign = '';
+    if (a) {
+      var people = peopleIn(a.room);
+      assign = '<div class="task-assign">' +
+        '<div class="tool-row"><select data-assign="room" data-task="' + t.id + '">' + roomOptions(a.room, false) + '</select></div>' +
+        '<div class="tool-row"><select data-assign="sid" data-task="' + t.id + '"><option value="">새로 고용…</option>' + people.map(function (p) {
+          return '<option value="' + esc(p.id) + '"' + (p.id === a.sid ? ' selected' : '') + '>' + esc(titleOf(p)) + ' · ' + esc((STATE[p.state] || STATE.idle).label) + '</option>';
+        }).join('') + '</select>' + (a.sid ? '' : '<input data-assign="name" data-task="' + t.id + '" maxlength="40" placeholder="새 사람 이름" value="' + esc(a.name || '') + '">') + '</div>' +
+        '<div class="task-act"><button type="button" class="primary" data-task-act="send" data-task="' + t.id + '"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? '보내는 중…' : '보내기') + '</button>' +
+        '<button type="button" data-task-act="close" data-task="' + t.id + '">취소</button></div></div>';
+    }
+    return '<li class="task" style="--tc:' + col[2] + '"><b>' + esc(t.title) + '</b>' + (t.text && t.text !== t.title ? '<p>' + esc(t.text) + '</p>' : '') +
+      '<div class="task-meta">' + meta.join(' · ') + '</div>' + (a ? assign : '<div class="task-act">' + acts.join('') + '</div>') + '</li>';
+  }
+  function schedDaysText(days) {
+    var d = (days || []).slice().sort().join('');
+    return d === '12345' ? '평일' : d === '06' ? '주말' : d === '0123456' ? '매일' : days.slice().sort().map(function (n) { return WEEK[n]; }).join('·');
+  }
+  function renderBoard() {
+    if (!SERVER) return;
+    fillSelect('taskRoom', true);
+    fillSelect('schedRoom', false);
+    var tasks = boardData.tasks || [], count = function (st) { return tasks.filter(function (t) { return t.status === st; }).length; };
+    document.getElementById('boardN').textContent = tasks.length ? '할 일 ' + count('todo') + ' · 진행 ' + count('doing') + ' · 확인 ' + count('review') : '';
+    var bn = document.getElementById('dockBoardN');
+    bn.textContent = count('review') ? String(count('review')) : '';
+    bn.classList.toggle('hot', count('review') > 0);
+    var cols = document.getElementById('taskCols'), ae = document.activeElement;
+    if (!(ae && cols.contains(ae) && /INPUT|SELECT/.test(ae.tagName))) {
+      cols.innerHTML = TASK_COLS.map(function (c) {
+        var list = tasks.filter(function (t) { return t.status === c[0]; }).sort(function (a, b) { return (b.reviewAt || b.assignedAt || b.createdAt || 0) - (a.reviewAt || a.assignedAt || a.createdAt || 0); });
+        if (c[0] === 'done') list = list.slice(0, 8);
+        if (!list.length && c[0] !== 'todo') return '';
+        return '<div class="task-col" style="--tc:' + c[2] + '"><h5><i></i>' + c[1] + ' ' + list.length + '</h5><ul>' +
+          (list.length ? list.map(taskHtml).join('') : '<li class="empty-note">위에 적어 두면 여기에 쌓여요.</li>') + '</ul></div>';
+      }).join('');
+    }
+    var sc = boardData.schedules || [];
+    document.getElementById('schedN').textContent = sc.length ? sc.filter(function (s) { return s.enabled; }).length + '개 켜짐' : '';
+    document.getElementById('schedList').innerHTML = sc.map(function (s) {
+      var arm = boardArm['s' + s.id] && Date.now() - boardArm['s' + s.id] < 4000;
+      return '<li class="' + (s.enabled ? '' : 'off') + '"><b>' + schedDaysText(s.days) + ' ' + esc(s.time) + '</b> · ' + esc(s.room) + ' · ' + esc(s.who) +
+        '<div class="task-meta">' + esc(s.text) + (s.lastRun ? ' · 마지막 ' + esc(s.lastRun.slice(5)) + ' ' + esc(s.lastResult || '') : '') + '</div>' +
+        '<div class="sched-act"><button type="button" data-sched-act="toggle" data-sched="' + s.id + '">' + (s.enabled ? '끄기' : '켜기') + '</button>' +
+        '<button type="button" data-sched-act="run" data-sched="' + s.id + '">지금 보내기</button>' +
+        '<button type="button" class="danger' + (arm ? ' armed' : '') + '" data-sched-act="del" data-sched="' + s.id + '">' + (arm ? '정말 지우기' : '지우기') + '</button></div></li>';
+    }).join('') || '<li class="empty-note">아직 예약이 없어요.</li>';
+  }
+  document.getElementById('schedDays').innerHTML = [1, 2, 3, 4, 5, 6, 0].map(function (n) {
+    return '<label class="' + (n >= 1 && n <= 5 ? 'on' : '') + '"><input type="checkbox" value="' + n + '"' + (n >= 1 && n <= 5 ? ' checked' : '') + '>' + WEEK[n] + '</label>';
+  }).join('');
+  document.getElementById('schedDays').addEventListener('change', function (e) { e.target.parentNode.classList.toggle('on', e.target.checked); });
+  document.getElementById('taskForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ta = document.getElementById('taskText'), raw = ta.value.trim();
+    if (!raw) return;
+    postTask({ op: 'add', title: raw.split(/\r?\n/)[0], text: raw.replace(/\s*\r?\n\s*/g, ' '), room: document.getElementById('taskRoom').value }).then(function (j) { if (j.ok) ta.value = ''; });
+  });
+  document.getElementById('schedForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var days = Array.prototype.map.call(document.querySelectorAll('#schedDays input:checked'), function (x) { return Number(x.value); });
+    var note = document.getElementById('schedNote');
+    postTask({ op: 'sched-add', room: document.getElementById('schedRoom').value, who: document.getElementById('schedWho').value, text: document.getElementById('schedText').value, time: document.getElementById('schedTime').value, days: days }).then(function (j) {
+      note.className = 'send-note' + (j.ok ? '' : ' err');
+      note.textContent = j.ok ? '예약했어요.' : j.error || '예약하지 못했어요';
+      if (j.ok) { document.getElementById('schedText').value = ''; }
+    });
+  });
+  var taskCols = document.getElementById('taskCols');
+  taskCols.addEventListener('change', function (e) {
+    var f = e.target.getAttribute('data-assign'), id = e.target.getAttribute('data-task'), a = assignOpen[id];
+    if (!f || !a) return;
+    if (f === 'room') { a.room = e.target.value; a.sid = ''; }
+    if (f === 'sid') a.sid = e.target.value;
+    e.target.blur();
+    renderBoard();
+  });
+  taskCols.addEventListener('input', function (e) {
+    if (e.target.getAttribute('data-assign') === 'name') (assignOpen[e.target.getAttribute('data-task')] || {}).name = e.target.value;
+  });
+  taskCols.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-task-act]');
+    if (!b) return;
+    e.stopPropagation();
+    var act = b.getAttribute('data-task-act'), id = b.getAttribute('data-task');
+    var t = (boardData.tasks || []).filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    if (act === 'open') { var p = peopleIn(t.room); assignOpen[id] = { room: t.room || (roomsView()[0] || {}).name || '', sid: p.length ? p[0].id : '', name: '' }; renderBoard(); return; }
+    if (act === 'close') { delete assignOpen[id]; renderBoard(); return; }
+    if (act === 'delete' && !(boardArm[id] && Date.now() - boardArm[id] < 4000)) { boardArm[id] = Date.now(); renderBoard(); setTimeout(renderBoard, 4100); return; }
+    if (act === 'send') {
+      var a = assignOpen[id];
+      if (!a || a.busy) return;
+      if (!a.sid && !String(a.name || '').trim()) { boardNote[id] = { text: '보낼 사람을 고르거나 새 이름을 적어 주세요', err: true }; renderBoard(); return; }
+      a.busy = true;
+      boardNote[id] = { text: a.sid ? '보내는 중…' : '고용하며 보내는 중… (Claude 가 뜰 때까지 1~2분)' };
+      renderBoard();
+      var who = a.sid && byId[a.sid] ? titleOf(byId[a.sid]) : '';
+      postTask({ op: 'assign', id: id, room: a.room, sid: a.sid, who: who, hireName: a.sid ? '' : a.name }).then(function (j) {
+        a.busy = false;
+        boardNote[id] = j.ok ? { text: j.queued ? '다른 컴퓨터로 보냈어요 (동기화 때)' : j.promptError ? '고용했지만 ' + j.promptError : '보냈어요' } : { text: j.error || '못 보냈어요', err: true };
+        if (j.ok) delete assignOpen[id];
+        renderBoard();
+      });
+      return;
+    }
+    postTask({ op: act, id: id });
+  });
+  document.getElementById('schedList').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-sched-act]');
+    if (!b) return;
+    var act = b.getAttribute('data-sched-act'), id = b.getAttribute('data-sched');
+    if (act === 'del' && !(boardArm['s' + id] && Date.now() - boardArm['s' + id] < 4000)) { boardArm['s' + id] = Date.now(); renderBoard(); setTimeout(renderBoard, 4100); return; }
+    var note = document.getElementById('schedNote');
+    if (act === 'run') { note.className = 'send-note'; note.textContent = '보내는 중… (새로 고용하면 1~2분)'; }
+    postTask({ op: act === 'del' ? 'sched-del' : act === 'toggle' ? 'sched-toggle' : 'sched-run', id: id }).then(function (j) {
+      if (act === 'run') { note.className = 'send-note' + (j.ok ? '' : ' err'); note.textContent = j.ok ? '보냈어요. 일감 보드에도 남겼어요.' : j.error || '못 보냈어요'; }
+    });
+  });
+
+  // ---------- 직원 탭 도구: 다른 컴퓨터 업데이트 · 세션 정리 ----------
+  var toolOpen = '', cleanupHours = 6, toolArm = 0;
+  var UPDATE_TEXT = '현황판 업데이트: 이 AI News 저장소에서 workroom-dashboard 브랜치를 git pull 한 다음 workroom/UPDATE.md 의 절차를 그대로 따라 해 줘. 끝나면 결과를 한 줄로 알려 줘.';
+  function updatePanelHtml() {
+    var machs = (data.machines || []).map(function (m) { return m.name; });
+    if (!machs.length) return '<h4>다른 컴퓨터 업데이트</h4><p class="tool-note">동기화로 이어진 다른 컴퓨터가 없어요.</p>';
+    var rows = machs.map(function (name) {
+      // AI News 방 세션이 먼저, 그다음 일하지 않는 세션, 최근 것부터
+      var c = (data.sessions || []).filter(function (s) { return s.machine === name && s.state !== 'ended'; }).sort(function (a, b) {
+        var an = /ai\s*news/i.test(a.room) ? 0 : 1, bn = /ai\s*news/i.test(b.room) ? 0 : 1;
+        return an - bn || (a.state === 'working' ? 1 : 0) - (b.state === 'working' ? 1 : 0) || (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+      return '<div class="tool-row"><input type="checkbox" data-up-mach="' + esc(name) + '"' + (c.length ? ' checked' : ' disabled') + '><span>' + esc(name) + '</span>' +
+        (c.length ? '<select data-up-sid="' + esc(name) + '">' + c.map(function (s) {
+          return '<option value="' + esc(s.id) + '">' + esc(titleOf(s)) + ' · ' + esc(String(s.room).replace(name + ' · ', '')) + ' · ' + esc((STATE[s.state] || STATE.idle).label) + '</option>';
+        }).join('') + '</select>' : '<span>열린 세션이 없어요</span>') + '</div>';
+    }).join('');
+    return '<h4>다른 컴퓨터 업데이트</h4><p class="tool-note">컴퓨터마다 고른 세션(보통 AI News 방)에 아래 지시를 보내요. 다른 컴퓨터라 동기화 때(1~2분) 들어가요.</p>' + rows +
+      '<textarea id="upText" rows="3" maxlength="1000">' + esc(UPDATE_TEXT) + '</textarea>' +
+      '<div class="tool-actions"><button type="button" class="primary" data-up-send>보내기</button></div><div class="tool-note" id="upNote"></div>';
+  }
+  function cleanupCandidates() {
+    var now = Date.now();
+    return (data.sessions || []).filter(function (s) {
+      return !s.synthetic && (s.state === 'done' || s.state === 'idle' || s.state === 'error') && now - (s.stateSince || 0) > cleanupHours * 3600000;
+    }).sort(function (a, b) { return (a.stateSince || 0) - (b.stateSince || 0); });
+  }
+  function cleanupPanelHtml() {
+    var now = Date.now(), list = cleanupCandidates();
+    return '<h4>세션 정리</h4><div class="staff-seg" style="padding:0 0 6px">' + [1, 6, 24].map(function (h) {
+      return '<button type="button" data-clean-h="' + h + '" class="' + (cleanupHours === h ? 'on' : '') + '">' + (h === 24 ? '하루' : h + '시간') + ' 넘게</button>';
+    }).join('') + '</div>' +
+      (list.length ? list.map(function (s) {
+        return '<div class="tool-row"><input type="checkbox" data-clean="' + esc(s.id) + '" checked><span>' + esc(titleOf(s)) + ' · ' + esc(s.room) + ' · ' +
+          esc((CAT[catOf(s)] || STATE[s.state] || STATE.idle).label) + ' ' + ago(s.stateSince, now) + '</span></div>';
+      }).join('') : '<p class="tool-note">그만큼 둔 세션이 없어요.</p>') +
+      (list.length ? '<div class="tool-actions"><button type="button" data-clean-act="ack">확인 처리</button><button type="button" class="danger' + (toolArm && Date.now() - toolArm < 4000 ? ' armed' : '') + '" data-clean-act="close">' +
+        (toolArm && Date.now() - toolArm < 4000 ? '정말 탭 닫기' : '탭 닫기') + '</button></div>' : '') +
+      '<div class="tool-note" id="cleanNote">\'확인 처리\'는 확인할 일에서만 치워요. \'탭 닫기\'는 그 Orca 탭을 닫아요 (대화 기록은 남아서 claude --resume 으로 다시 열 수 있어요). 일하는 중·답을 기다리는 세션은 고르지 않아요.</div>';
+  }
+  function renderToolPanel() {
+    var p = document.getElementById('toolPanel');
+    document.querySelectorAll('#staffTools [data-tool]').forEach(function (b) { b.setAttribute('aria-expanded', String(b.getAttribute('data-tool') === toolOpen)); });
+    if (!toolOpen || !data) { p.hidden = true; p.innerHTML = ''; return; }
+    p.hidden = false;
+    p.innerHTML = toolOpen === 'update' ? updatePanelHtml() : cleanupPanelHtml();
+  }
+  document.getElementById('staffTools').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tool]');
+    if (!b) return;
+    toolOpen = toolOpen === b.getAttribute('data-tool') ? '' : b.getAttribute('data-tool');
+    toolArm = 0;
+    renderToolPanel();
+  });
+  document.getElementById('toolPanel').addEventListener('click', function (e) {
+    var p = document.getElementById('toolPanel');
+    var h = e.target.closest('[data-clean-h]');
+    if (h) { cleanupHours = Number(h.getAttribute('data-clean-h')); toolArm = 0; renderToolPanel(); return; }
+    if (e.target.closest('[data-up-send]')) {
+      var text = document.getElementById('upText').value.trim(), note = document.getElementById('upNote');
+      var picks = Array.prototype.filter.call(p.querySelectorAll('[data-up-mach]'), function (c) { return c.checked; }).map(function (c) {
+        var m = c.getAttribute('data-up-mach'), sel = p.querySelector('[data-up-sid="' + CSS.escape(m) + '"]');
+        return { m: m, sid: sel && sel.value };
+      }).filter(function (x) { return x.sid; });
+      if (!text || !picks.length) { note.textContent = '보낼 컴퓨터와 지시를 정해 주세요.'; return; }
+      note.textContent = '보내는 중…';
+      Promise.all(picks.map(function (x) { return postJson('__send', { sid: x.sid, text: text }).then(function (j) { return x.m + ': ' + (j.ok ? (j.status === 'queued' ? '보냄 (동기화 때 들어가요)' : '넣었어요') : '못 보냄 — ' + (j.error || '')); }); }))
+        .then(function (lines) { note.textContent = lines.join('\n'); });
+      return;
+    }
+    var act = e.target.closest('[data-clean-act]');
+    if (act) {
+      var sids = Array.prototype.filter.call(p.querySelectorAll('[data-clean]'), function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-clean'); });
+      var cn = document.getElementById('cleanNote');
+      if (!sids.length) { cn.textContent = '고른 세션이 없어요.'; return; }
+      if (act.getAttribute('data-clean-act') === 'ack') {
+        sids.forEach(function (id) { var s = byId[id]; if (s) acked[s.id + '|' + (s.stateSince || 0)] = Date.now(); });
+        saveAcked();
+        render();
+        cn.textContent = sids.length + '개를 확인할 일에서 치웠어요.';
+        return;
+      }
+      if (!(toolArm && Date.now() - toolArm < 4000)) { toolArm = Date.now(); renderToolPanel(); setTimeout(function () { if (toolOpen === 'cleanup') { toolArm = 0; renderToolPanel(); } }, 4100); return; }
+      toolArm = 0;
+      cn.textContent = sids.length + '개 닫는 중…';
+      postJson('__close', { sids: sids }).then(function (j) {
+        var res = j.results || [];
+        var ok = res.filter(function (x) { return x.ok; }).length, q = res.filter(function (x) { return x.status === 'queued'; }).length;
+        cn.textContent = res.length ? ok + '개 닫았어요' + (q ? ' (그중 ' + q + '개는 다른 컴퓨터라 동기화 때)' : '') +
+          (res.length - ok ? '\n못 닫음: ' + res.filter(function (x) { return !x.ok; }).map(function (x) { return (byId[x.sid] ? titleOf(byId[x.sid]) : x.sid) + ' — ' + x.error; }).join(' / ') : '') : (j.error || '닫지 못했어요');
+      });
+    }
+  });
 
   // ---------- 방 안: 이 방 직원과 '사람 고용' ----------
   // 고용 = 그 방 프로젝트 폴더에 Orca 새 탭을 열고 claude -n "이름" 으로 새 세션 (server.js /__hire → send.js --hire).
@@ -2404,6 +3008,8 @@
       roleOf[s.id] ? ['회의 역할', esc(roleOf[s.id])] : null,
       s.synthetic ? ['방', esc(s.room) + ' · 회의 상태 파일 기준 (' + esc(s.agent || '에이전트') + ')'] : ['방', esc(s.room) + (s.app === 'chat' ? ' · 채팅 UI' : ' · 터미널')],
       s.cwd ? ['폴더', esc(s.cwd)] : null,
+      s.git && s.git.head ? ['변경', esc(gitSheet(s.git))] : null,
+      s.ctx ? ['컨텍스트', ctxText(s.ctx) + (s.ctx.tokens && s.ctx.pct != null ? ' (' + Math.round(s.ctx.tokens / 1000) + 'k 토큰)' : '')] : null,
       s.waitingFor ? ['기다리는 것', esc(s.waitingFor)] : null,
       s.errorText ? ['오류', esc(s.errorText)] : null,
       s.tool ? ['도구', esc(s.tool)] : null,
@@ -2785,7 +3391,7 @@
   var dock = { tab: 'todo', folded: false, pos: '' };
   try { Object.assign(dock, JSON.parse(localStorage.getItem(DOCK_KEY) || '{}')); } catch (_) {}
   if (!dock.pos) { dock.pos = window.matchMedia('(max-width: 1100px)').matches ? 'bottom' : 'top'; dock.folded = dock.pos === 'bottom'; }
-  if (['todo', 'staff', 'minutes'].indexOf(dock.tab) < 0) dock.tab = 'todo';
+  if (['todo', 'staff', 'minutes', 'board', 'report'].indexOf(dock.tab) < 0) dock.tab = 'todo';
   function applyDock(save) {
     var aside = document.querySelector('aside.side');
     aside.setAttribute('data-tab', dock.tab);
@@ -2813,6 +3419,8 @@
       var tab = b.getAttribute('data-tab');
       if (tab === dock.tab && !dock.folded) { dock.folded = true; applyDock(true); }
       else openTab(tab);
+      if (tab === 'board' && !dock.folded) loadTasks();
+      if (tab === 'report' && !dock.folded) loadActivity();
       return;
     }
     if (e.target.closest('#dockPos')) { dock.pos = dock.pos === 'bottom' ? 'top' : 'bottom'; applyDock(true); }

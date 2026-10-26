@@ -39,6 +39,15 @@ minutes-js/
 outbox/
 send-log.json
 inbox-done.json
+# 사용량 (statusline.js)·활동 집계 (hook.js)
+usage/
+statusline-next.json
+activity.js
+activity-cache.json
+# 일감 보드·예약 (board.js), 텔레그램 알림 (notify.js: 봇 토큰이 들어 있다)
+tasks.json
+notify.json
+notify-state.json
 # 회의록 보관 (sync.js)
 archive-repo/
 archive.request

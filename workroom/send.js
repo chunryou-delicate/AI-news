@@ -7,7 +7,8 @@
 // 기록: send-log.json (이 컴퓨터에서 보낸 최근 200건과 상태). 이 컴퓨터에만 두고 올리지 않는다.
 // 명령줄: node send.js <세션ID> <지시>          (예: AI News 세션이 다른 세션에 대신 전할 때)
 //         node send.js --json <세션ID> <지시>   결과를 JSON 한 줄로 (server.js 가 따로 띄운 프로세스로 부른다)
-//         node send.js --hire [--json] <방> <이름>   그 방 프로젝트 폴더에 새 Claude 세션을 띄운다 (현황판 '사람 고용')
+//         node send.js --hire [--json] <방> <이름> [-- <첫 지시>]   그 방 프로젝트 폴더에 새 Claude 세션을 띄운다 (현황판 '사람 고용')
+//         node send.js --close [--json] <세션ID>...   다 끝났거나 놀고 있는 세션의 Orca 탭을 닫는다 (현황판 '세션 정리')
 // Orca 명령줄은 컴퓨터에 따라 수십 초 걸릴 수 있어서, 터미널 전체 목록(terminal list) 대신 그 터미널 하나(terminal show)만 묻고,
 // 출력은 파이프 대신 임시 파일로 받는다 (제한 시간에 끊어도 Orca 쪽 하위 프로세스가 파이프를 붙잡아 오래 멈추지 않게).
 
@@ -103,6 +104,10 @@ function deliverLocal(sid, text) {
   if (s.state === 'ended') return { ok: false, error: '이미 끝난 세션이에요' };
   const handle = s.orca && s.orca.terminal;
   if (!handle) return { ok: false, error: 'Orca 터미널에서 돌고 있는 세션만 받을 수 있어요 (채팅 탭은 아직 안 돼요)' };
+  return deliverHandle(handle, text);
+}
+// 그 터미널에 에이전트가 돌고 있을 때만 넣는다 (셸에 명령으로 들어가지 않게)
+function agentTerminal(handle) {
   let info;
   try { info = orca(['terminal', 'show', '--terminal', handle], SHOW_MS); } catch (e) {
     return { ok: false, error: e.timeout ? `Orca 가 ${SHOW_MS / 1000}초 안에 답하지 않았어요 (잠시 뒤 다시 보내 주세요)` : 'Orca 에 연결하지 못했어요 (Orca 가 켜져 있는지 확인)' };
@@ -116,6 +121,11 @@ function deliverLocal(sid, text) {
   if (!t.agentIdentity || t.connected === false || t.writable === false) {
     return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)' };
   }
+  return { ok: true };
+}
+function deliverHandle(handle, text) {
+  const chk = agentTerminal(handle);
+  if (!chk.ok) return chk;
   let r;
   try { r = orca(['terminal', 'send', '--terminal', handle, '--text', text, '--enter'], SEND_MS); } catch (e) {
     return { ok: false, error: e.timeout ? `Orca 가 ${SEND_MS / 1000}초 안에 답하지 않았어요. 들어갔을 수도 있으니 터미널을 보고 다시 보내 주세요` : '보내다 오류가 났어요: ' + String(e.message || e).slice(0, 160) };
@@ -186,6 +196,7 @@ function send(sid, text) {
 // ---------- 사람 고용: 그 방 프로젝트 폴더에 새 Claude 세션 ----------
 // Orca 새 터미널(탭 제목 = 이름)에서 claude -n "이름" 으로 시작한다. 다른 컴퓨터 방이면 지시와 같은 길(outbox → 그 컴퓨터 sync.js)로 보낸다.
 const CREATE_MS = 60 * 1000;
+const WAIT_MS = 90 * 1000;   // 고용하며 첫 지시를 넣을 때 Claude 가 뜰 때까지 기다리는 한도
 // 셸에 그대로 들어가므로 글자·숫자·빈칸·몇몇 기호만 남긴다
 function cleanName(name) {
   return String(name || '').replace(/[^\p{L}\p{N} ._()·-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -199,7 +210,8 @@ function roomFolder(room, cwdHint) {
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).map((s) => s.cwd);
   return [].concat((r && r.paths) || [], cwdHint || [], recent).find(isDir) || '';
 }
-function hireLocal(room, name, cwdHint) {
+// prompt 가 있으면 Claude 가 입력을 받을 준비가 될 때까지(tui-idle) 기다렸다가 첫 지시로 넣는다 (일감 보드·예약 업무).
+function hireLocal(room, name, cwdHint, prompt) {
   name = cleanName(name);
   if (!name) return { ok: false, error: '이름을 적어 주세요' };
   const other = (roomsConfig().otherRoom || {}).name;
@@ -221,59 +233,124 @@ function hireLocal(room, name, cwdHint) {
     return { ok: false, error: e.timeout ? `Orca 가 ${CREATE_MS / 1000}초 안에 답하지 않았어요. 탭이 생겼을 수 있으니 Orca 를 보고 다시 해 주세요` : 'Orca 에 연결하지 못했어요 (Orca 가 켜져 있는지 확인)' };
   }
   if (!r || !r.ok) return { ok: false, error: /worktree|not.?found|unknown/i.test(JSON.stringify((r && r.error) || '')) ? 'Orca 에 그 폴더가 프로젝트로 등록돼 있지 않아요' : orcaError(r) };
-  return { ok: true, name, folder };
+  const out = { ok: true, name, folder };
+  prompt = cleanText(prompt);
+  if (!prompt) return out;
+  const t = r.result && (r.result.terminal || r.result);
+  const handle = t && t.handle;
+  if (!handle) return Object.assign(out, { promptError: '새 터미널을 찾지 못해 첫 지시는 넣지 못했어요' });
+  try { orca(['terminal', 'wait', '--terminal', handle, '--for', 'tui-idle', '--timeout-ms', String(WAIT_MS)], WAIT_MS + 10000); } catch (_) {}
+  const d = deliverHandle(handle, prompt);
+  return d.ok ? Object.assign(out, { prompted: true }) : Object.assign(out, { promptError: '첫 지시를 넣지 못했어요: ' + d.error });
 }
 // 현황판(server.js)과 명령줄이 부른다. room = 현황판의 방 이름 (다른 컴퓨터 방은 "컴퓨터 · 방")
-function hire(room, name) {
+function hire(room, name, prompt) {
   name = cleanName(name);
+  prompt = cleanText(prompt);
   if (!name) return { ok: false, error: '이름을 적어 주세요' };
   const st = readState();
   const r = (st.rooms || []).find((x) => x.name === room);
   if (!r) return { ok: false, error: '그 방을 찾지 못했어요' };
   if (r.isOther) return { ok: false, error: '라운지는 정해진 폴더가 없어서 고용할 수 없어요' };
   const id = crypto.randomBytes(6).toString('hex');
-  const base = { id, at: Date.now(), kind: 'hire', sid: '', title: name, room, text: `사람 고용: ${name}` };
+  const base = { id, at: Date.now(), kind: 'hire', sid: '', title: name, room, text: `사람 고용: ${name}${prompt ? ' — ' + prompt : ''}` };
   if (r.machine) {
     const sc = readJson(path.join(ROOT, 'sync.json'), null);
     if (!sc || !sc.repo || !sc.push) return { ok: false, error: '이 컴퓨터는 동기화로 올리지 않게 되어 있어서 다른 컴퓨터에 고용할 수 없어요' };
     const hint = (st.sessions || []).filter((s) => s.machine === r.machine && s.room === room && s.cwd)
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
     fs.mkdirSync(OUTBOX, { recursive: true });
-    const msg = Object.assign({ to: machineKey(r.machine), toMachine: r.machine, from: myMachine(), roomLabel: r.label || room, name, cwd: (hint && hint.cwd) || '' }, base);
+    const msg = Object.assign({ to: machineKey(r.machine), toMachine: r.machine, from: myMachine(), roomLabel: r.label || room, name, cwd: (hint && hint.cwd) || '', prompt }, base);
     writeAtomic(path.join(OUTBOX, `${id}.json`), JSON.stringify(msg));
     logAdd(Object.assign({ status: 'queued', toMachine: r.machine }, base));
-    return { ok: true, id, status: 'queued', toMachine: r.machine };
+    return { ok: true, id, status: 'queued', toMachine: r.machine, name };
   }
-  const res = hireLocal(room, name);
+  const res = hireLocal(room, name, '', prompt);
+  logAdd(Object.assign({ status: res.ok ? 'delivered' : 'failed', error: res.error || res.promptError || '', doneAt: Date.now() }, base));
+  return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
+}
+
+// ---------- 세션 정리: 다 끝났거나 놀고 있는 세션의 Orca 탭 닫기 ----------
+// 일하는 중·승인 대기·질문 중인 세션은 닫지 않는다. 대화 기록은 남아서 claude --resume 으로 다시 열 수 있다.
+const CLOSABLE = ['done', 'idle', 'error'];
+function closeLocal(sid) {
+  const s = (readState().sessions || []).find((x) => x.id === sid && !x.machine);
+  if (!s) return { ok: false, error: '이 컴퓨터에서 그 세션을 찾지 못했어요' };
+  if (s.state === 'ended') return { ok: true, already: true };
+  if (!CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
+  const handle = s.orca && s.orca.terminal;
+  if (!handle) return { ok: false, error: 'Orca 터미널 세션만 닫을 수 있어요' };
+  const chk = agentTerminal(handle);
+  if (!chk.ok) return chk;
+  let r;
+  try { r = orca(['terminal', 'close', '--terminal', handle, '--tab'], SEND_MS); } catch (e) {
+    return { ok: false, error: e.timeout ? 'Orca 가 답하지 않았어요' : '닫다 오류가 났어요: ' + String(e.message || e).slice(0, 160) };
+  }
+  return r && r.ok ? { ok: true } : { ok: false, error: orcaError(r) };
+}
+function closeSession(sid) {
+  const s = (readState().sessions || []).find((x) => x.id === sid);
+  if (!s) return { ok: false, error: '그 세션을 찾지 못했어요' };
+  const id = crypto.randomBytes(6).toString('hex');
+  const base = { id, at: Date.now(), kind: 'close', sid, title: s.title || '', room: s.room || '', text: '세션 닫기' };
+  if (s.machine) {
+    if (!CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
+    const sc = readJson(path.join(ROOT, 'sync.json'), null);
+    if (!sc || !sc.repo || !sc.push) return { ok: false, error: '이 컴퓨터는 동기화로 올리지 않게 되어 있어서 다른 컴퓨터 세션은 닫을 수 없어요' };
+    fs.mkdirSync(OUTBOX, { recursive: true });
+    writeAtomic(path.join(OUTBOX, `${id}.json`), JSON.stringify(Object.assign({ to: machineKey(s.machine), toMachine: s.machine, from: myMachine() }, base)));
+    logAdd(Object.assign({ status: 'queued', toMachine: s.machine }, base));
+    return { ok: true, id, status: 'queued', toMachine: s.machine };
+  }
+  const res = closeLocal(sid);
   logAdd(Object.assign({ status: res.ok ? 'delivered' : 'failed', error: res.error || '', doneAt: Date.now() }, base));
   return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
 }
-// 다른 컴퓨터에서 받은 것 (sync.js): 고용이면 고용, 아니면 지시
+
+// 다른 컴퓨터에서 받은 것 (sync.js): 고용·닫기·지시
 function deliverInbound(m) {
-  return m.kind === 'hire' ? hireLocal(m.roomLabel, m.name, m.cwd) : deliverLocal(m.sid, m.text);
+  if (m.kind === 'hire') return hireLocal(m.roomLabel, m.name, m.cwd, m.prompt);
+  if (m.kind === 'close') return closeLocal(m.sid);
+  return deliverLocal(m.sid, m.text);
 }
 
-module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey };
+module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey };
 
-if (require.main === module && process.argv[2] === '--hire') {
-  // node send.js --hire [--json] <방> <이름>
-  const argv = process.argv.slice(3), json = argv[0] === '--json';
-  const [room, ...rest] = json ? argv.slice(1) : argv;
+// 명령줄 (현황판 서버는 --json 을 붙여 따로 띄운 프로세스로 부른다)
+//   node send.js [--json] <세션ID> <지시>
+//   node send.js --hire [--json] <방> <이름> [-- <첫 지시>]
+//   node send.js --close [--json] <세션ID> [<세션ID> ...]
+if (require.main === module) {
+  const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : 'send';
+  let argv = process.argv.slice(mode === 'send' ? 2 : 3);
+  const json = argv[0] === '--json';
+  if (json) argv = argv.slice(1);
+  const done = (r, okText) => {
+    if (json) console.log(JSON.stringify(r));
+    else console.log(r.ok ? okText(r) : `못 했어요: ${r.error}`);
+    process.exit(r.ok ? 0 : 1);
+  };
   let r;
-  try { r = room && rest.length ? hire(room, rest.join(' ')) : { ok: false, error: '방과 이름이 필요해요' }; } catch (e) { r = { ok: false, error: '고용하다 오류가 났어요: ' + String(e.message || e).slice(0, 160) }; }
-  if (json) console.log(JSON.stringify(r));
-  else console.log(r.ok ? (r.status === 'queued' ? `${r.toMachine} 로 보냈어요 (동기화 때 그 컴퓨터가 띄움)` : `고용했어요: ${r.name} (${r.folder})`) : `못 했어요: ${r.error}`);
-  process.exit(r.ok ? 0 : 1);
-} else if (require.main === module) {
-  const argv = process.argv.slice(2), json = argv[0] === '--json';
-  const [sid, ...rest] = json ? argv.slice(1) : argv;
-  if (!sid || !rest.length) {
-    console.log(json ? JSON.stringify({ ok: false, error: '세션과 보낼 말이 필요해요' }) : '사용법: node send.js [--json] <세션ID> <지시>');
-    process.exit(1);
+  try {
+    if (mode === 'hire') {
+      const cut = argv.indexOf('--');
+      const head = cut >= 0 ? argv.slice(0, cut) : argv, prompt = cut >= 0 ? argv.slice(cut + 1).join(' ') : '';
+      const [room, ...rest] = head;
+      r = room && rest.length ? hire(room, rest.join(' '), prompt) : { ok: false, error: '방과 이름이 필요해요' };
+      done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 그 컴퓨터가 띄움)` : `고용했어요: ${x.name} (${x.folder})${x.promptError ? ' — ' + x.promptError : ''}`));
+    } else if (mode === 'close') {
+      if (!argv.length) r = { ok: false, error: '닫을 세션이 필요해요' };
+      else {
+        const results = argv.map((sid) => Object.assign({ sid }, closeSession(sid)));
+        r = { ok: results.some((x) => x.ok), results, error: results.filter((x) => !x.ok).map((x) => x.error).join(' / ') };
+      }
+      done(r, (x) => `${x.results.filter((y) => y.ok).length}개 닫았어요 (다른 컴퓨터는 동기화 때)`);
+    } else {
+      const [sid, ...rest] = argv;
+      r = sid && rest.length ? send(sid, rest.join(' ')) : { ok: false, error: '세션과 보낼 말이 필요해요' };
+      done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 전달)` : '보냈어요'));
+    }
+  } catch (e) {
+    done({ ok: false, error: '오류가 났어요: ' + String(e.message || e).slice(0, 160) }, () => '');
   }
-  let r;
-  try { r = send(sid, rest.join(' ')); } catch (e) { r = { ok: false, error: '보내다 오류가 났어요: ' + String(e.message || e).slice(0, 160) }; }
-  if (json) console.log(JSON.stringify(r));
-  else console.log(r.ok ? (r.status === 'queued' ? `${r.toMachine} 로 보냈어요 (동기화 때 전달)` : '보냈어요') : `못 보냈어요: ${r.error}`);
-  process.exit(r.ok ? 0 : 1);
 }
