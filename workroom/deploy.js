@@ -21,7 +21,7 @@ const http = require('http');
 const { execFileSync, spawn, spawnSync } = require('child_process');
 
 const TARGET = path.join(os.homedir(), '.claude', 'workroom');
-const CODE = ['hook.js', 'install-hooks.js', 'sync.js', 'server.js', 'send.js', 'board.js', 'notify.js', 'statusline.js', 'tunnel.js', '현황판.html', 'office3d.js'];
+const CODE = ['hook.js', 'install-hooks.js', 'sync.js', 'server.js', 'send.js', 'acks.js', 'board.js', 'notify.js', 'statusline.js', 'tunnel.js', '현황판.html', 'office3d.js'];
 const TASK = 'WorkroomSync';
 const argv = process.argv.slice(2);
 const has = (flag) => argv.includes(flag);

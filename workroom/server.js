@@ -129,7 +129,24 @@ const HIRE_MS = 4 * 60 * 1000;   // 고용하며 첫 지시까지 넣을 때 (Cl
 const board = require('./board.js');
 // send.js 를 따로 띄워 돌리고, 다른 컴퓨터로 가는 것이면 동기화를 한 번 돌린다 (고용·일감 보드·알림이 쓴다)
 function runChild(args, what) {
-  return sendInChild(args, what, args[0] === '--hire' ? HIRE_MS : 0).then((r) => { syncSoon(r); return r; });
+  return sendInChild(args, what, args[0] === '--hire' ? HIRE_MS : 0).then((r) => {
+    syncSoon(r);
+    // 지시를 보냈으면(카드 빠른 답·세션 창·텔레그램·일감) 그 세션의 지금 확인할 일을 확인한 것으로 — 다른 기기·컴퓨터에서도 사라지게
+    if (r.ok && args[0] === '--json') { try { acks.markSession(readStateJs(), args[1]); } catch (_) {} }
+    return r;
+  });
+}
+const acks = require('./acks.js');
+function readStateJs() {
+  try {
+    const t = fs.readFileSync(path.join(ROOT, 'state.js'), 'utf8');
+    return JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1));
+  } catch (_) { return null; }
+}
+function rebuildSoon() {
+  setTimeout(() => {
+    try { require('child_process').spawn(process.execPath, [path.join(ROOT, 'hook.js'), '--rebuild'], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (_) {}
+  }, 2000);
 }
 // 다른 컴퓨터로 가는 것은 바로 동기화를 한 번 돌려 빨리 올린다
 function syncSoon(r) {
@@ -161,10 +178,13 @@ function handleSend(cfg, req, res, headers, pathname, u) {
     }
     if (pathname === '/__close') {
       // 세션 정리: 다 끝났거나 놀고 있는 세션의 Orca 탭 닫기 (send.js 가 일하는 중·답 기다리는 세션은 거른다)
+      // force = 직원 해고 (현황판이 한 번 더 확인받은 뒤, 일하는 중이어도 닫는다)
       const sids = (Array.isArray(j.sids) ? j.sids : []).map((x) => String(x).slice(0, 80)).filter(Boolean).slice(0, 40);
       if (!sids.length) { sendJson(res, headers, 409, { ok: false, error: '닫을 세션을 골라 주세요' }); return; }
-      sendInChild(['--close', '--json'].concat(sids), '닫기', 5 * 60 * 1000).then((r) => {
+      sendInChild(['--close', '--json'].concat(j.force === true ? ['--force'] : []).concat(sids), '닫기', 5 * 60 * 1000).then((r) => {
         if (r.results && r.results.some((x) => x.status === 'queued')) syncSoon({ ok: true, status: 'queued' });
+        // 탭을 강제로 닫으면 Claude 의 퇴장 훅이 안 불려 상태가 다음 이벤트까지 그대로다 → 잠깐 뒤 상태를 다시 만든다
+        if (r.results && r.results.some((x) => x.ok && x.status === 'delivered')) rebuildSoon();
         sendJson(res, headers, r.ok ? 200 : 409, r);
       });
       return;
@@ -173,9 +193,18 @@ function handleSend(cfg, req, res, headers, pathname, u) {
       board.handle(runChild, j).then((r) => sendJson(res, headers, r.ok ? 200 : 409, r), () => sendJson(res, headers, 500, { ok: false, error: '일감을 처리하지 못했어요' }));
       return;
     }
+    if (pathname === '/__ack') {
+      // 확인할 일 '확인'(on)·'되살리기'(off): 이 컴퓨터 acks.json 에 적고, 다른 컴퓨터 것과 합친 결과를 돌려준다
+      const keys = (Array.isArray(j.keys) ? j.keys : []).map((k) => String(k)).filter(Boolean).slice(0, 200);
+      if (!keys.length) { sendJson(res, headers, 409, { ok: false, error: '확인할 것이 없어요' }); return; }
+      acks.set(keys, j.on !== false);
+      syncSoon({ ok: true, status: 'queued' });
+      sendJson(res, headers, 200, { ok: true, acks: acks.merged() });
+      return;
+    }
     const sid = String(j.sid || ''), text = String(j.text || '').slice(0, 2000);
     if (!sid || !text.trim()) { sendJson(res, headers, 409, { ok: false, error: '보낼 말이 비어 있어요' }); return; }
-    sendInChild(['--json', sid, text], '보내기').then((r) => { syncSoon(r); sendJson(res, headers, r.ok ? 200 : 409, r); });
+    runChild(['--json', sid, text], '보내기').then((r) => sendJson(res, headers, r.ok ? 200 : 409, r));
   }, () => sendJson(res, headers, 413, { ok: false, error: '너무 길어요' }));
 }
 
@@ -202,7 +231,8 @@ function serve(cfg) {
       return;
     }
     if (pathname === '/__tasks' && req.method === 'GET') { sendJson(res, headers, 200, Object.assign({ ok: true }, board.load())); return; }
-    if (/^\/__(send|sends|hire|close|tasks)$/.test(pathname)) { handleSend(cfg, req, res, headers, pathname, u); return; }
+    if (pathname === '/__acks' && req.method === 'GET') { sendJson(res, headers, 200, { ok: true, acks: acks.merged() }); return; }
+    if (/^\/__(send|sends|hire|close|tasks|ack)$/.test(pathname)) { handleSend(cfg, req, res, headers, pathname, u); return; }
     if (pathname === '/') {
       // 쿠키가 아직 안 실려도 열리도록 열쇠를 주소에 붙인 채로 화면으로 보낸다.
       res.writeHead(302, Object.assign(headers, { Location: encodeURI(PAGE) + (fromQuery ? `?k=${encodeURIComponent(fromQuery)}` : '') })).end();

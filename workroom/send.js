@@ -270,14 +270,15 @@ function hire(room, name, prompt) {
   return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
 }
 
-// ---------- 세션 정리: 다 끝났거나 놀고 있는 세션의 Orca 탭 닫기 ----------
-// 일하는 중·승인 대기·질문 중인 세션은 닫지 않는다. 대화 기록은 남아서 claude --resume 으로 다시 열 수 있다.
+// ---------- 세션 정리·해고: 세션의 Orca 탭 닫기 ----------
+// 정리(기본)는 일하는 중·승인 대기·질문 중인 세션은 닫지 않는다. 해고(force)는 현황판에서 한 번 더 확인받고 상태와 상관없이 닫는다.
+// 대화 기록은 남아서 claude --resume 으로 다시 열 수 있다.
 const CLOSABLE = ['done', 'idle', 'error'];
-function closeLocal(sid) {
+function closeLocal(sid, force) {
   const s = (readState().sessions || []).find((x) => x.id === sid && !x.machine);
   if (!s) return { ok: false, error: '이 컴퓨터에서 그 세션을 찾지 못했어요' };
   if (s.state === 'ended') return { ok: true, already: true };
-  if (!CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
+  if (!force && !CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
   const handle = s.orca && s.orca.terminal;
   if (!handle) return { ok: false, error: 'Orca 터미널 세션만 닫을 수 있어요' };
   const chk = agentTerminal(handle);
@@ -288,13 +289,13 @@ function closeLocal(sid) {
   }
   return r && r.ok ? { ok: true } : { ok: false, error: orcaError(r) };
 }
-function closeSession(sid) {
+function closeSession(sid, force) {
   const s = (readState().sessions || []).find((x) => x.id === sid);
   if (!s) return { ok: false, error: '그 세션을 찾지 못했어요' };
   const id = crypto.randomBytes(6).toString('hex');
-  const base = { id, at: Date.now(), kind: 'close', sid, title: s.title || '', room: s.room || '', text: '세션 닫기' };
+  const base = { id, at: Date.now(), kind: 'close', sid, title: s.title || '', room: s.room || '', text: force ? '해고' : '세션 닫기', force: !!force };
   if (s.machine) {
-    if (!CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
+    if (!force && !CLOSABLE.includes(s.state)) return { ok: false, error: '일하는 중이거나 답을 기다리는 세션은 닫지 않아요' };
     const sc = readJson(path.join(ROOT, 'sync.json'), null);
     if (!sc || !sc.repo || !sc.push) return { ok: false, error: '이 컴퓨터는 동기화로 올리지 않게 되어 있어서 다른 컴퓨터 세션은 닫을 수 없어요' };
     fs.mkdirSync(OUTBOX, { recursive: true });
@@ -302,7 +303,7 @@ function closeSession(sid) {
     logAdd(Object.assign({ status: 'queued', toMachine: s.machine }, base));
     return { ok: true, id, status: 'queued', toMachine: s.machine };
   }
-  const res = closeLocal(sid);
+  const res = closeLocal(sid, force);
   logAdd(Object.assign({ status: res.ok ? 'delivered' : 'failed', error: res.error || '', doneAt: Date.now() }, base));
   return Object.assign({ id, status: res.ok ? 'delivered' : 'failed' }, res);
 }
@@ -310,7 +311,7 @@ function closeSession(sid) {
 // 다른 컴퓨터에서 받은 것 (sync.js): 고용·닫기·지시
 function deliverInbound(m) {
   if (m.kind === 'hire') return hireLocal(m.roomLabel, m.name, m.cwd, m.prompt);
-  if (m.kind === 'close') return closeLocal(m.sid);
+  if (m.kind === 'close') return closeLocal(m.sid, !!m.force);
   return deliverLocal(m.sid, m.text);
 }
 
@@ -319,7 +320,7 @@ module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSes
 // 명령줄 (현황판 서버는 --json 을 붙여 따로 띄운 프로세스로 부른다)
 //   node send.js [--json] <세션ID> <지시>
 //   node send.js --hire [--json] <방> <이름> [-- <첫 지시>]
-//   node send.js --close [--json] <세션ID> [<세션ID> ...]
+//   node send.js --close [--json] [--force] <세션ID> [<세션ID> ...]   (--force = 해고: 상태와 상관없이)
 if (require.main === module) {
   const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : 'send';
   let argv = process.argv.slice(mode === 'send' ? 2 : 3);
@@ -339,9 +340,11 @@ if (require.main === module) {
       r = room && rest.length ? hire(room, rest.join(' '), prompt) : { ok: false, error: '방과 이름이 필요해요' };
       done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 그 컴퓨터가 띄움)` : `고용했어요: ${x.name} (${x.folder})${x.promptError ? ' — ' + x.promptError : ''}`));
     } else if (mode === 'close') {
+      const force = argv[0] === '--force';
+      if (force) argv = argv.slice(1);
       if (!argv.length) r = { ok: false, error: '닫을 세션이 필요해요' };
       else {
-        const results = argv.map((sid) => Object.assign({ sid }, closeSession(sid)));
+        const results = argv.map((sid) => Object.assign({ sid }, closeSession(sid, force)));
         r = { ok: results.some((x) => x.ok), results, error: results.filter((x) => !x.ok).map((x) => x.error).join(' / ') };
       }
       done(r, (x) => `${x.results.filter((y) => y.ok).length}개 닫았어요 (다른 컴퓨터는 동기화 때)`);

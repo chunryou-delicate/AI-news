@@ -708,6 +708,11 @@ function gitLine(g) {
   return `커밋 ${g.commits}개 · 파일 ${g.files}개 (+${g.ins} −${g.del})${g.subject ? ' · ' + g.subject : ''}`;
 }
 
+// 확인할 일 '확인'(이 컴퓨터 + 다른 컴퓨터, acks.js). 파일로 연 현황판도 다른 데서 확인한 것을 숨기게 state.js 에 싣는다.
+function mergedAcks() {
+  try { return require('./acks.js').merged(); } catch (_) { return {}; }
+}
+
 // ---------- 사용량 ----------
 // 컨텍스트: 상태줄 기록(usage/<세션>.json, statusline.js)이 있으면 그것, 없으면 transcript 마지막 응답의 입력 토큰으로 어림한다.
 // 5시간·7일 한도는 상태줄 기록에만 있다 (node install-hooks.js --statusline 로 켠 컴퓨터).
@@ -1162,6 +1167,7 @@ function rebuild() {
     meetings: meetings.concat(remote.meetings),
     machines: remote.machines,
     usage: usage.machine,
+    acks: mergedAcks(),
     sync: readJson(SYNC_STATUS, null),
   };
   writeAtomic(STATE_FILE, `window.__WORKROOM__ = ${JSON.stringify(payload)};\n`);

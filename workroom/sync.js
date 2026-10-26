@@ -113,6 +113,9 @@ function pushSnapshot(cfg, interactive) {
     fs.writeFileSync(path.join(OUT_DIR, 'logs', f.replace(/\.js$/, '.json')), JSON.stringify({ log: payload, speech }));
   }
   fs.writeFileSync(path.join(OUT_DIR, 'state.json'), JSON.stringify(state));
+  // 이 컴퓨터 현황판에서 '확인'한 것 (다른 컴퓨터 현황판에서도 사라지게, acks.js)
+  const acks = readJson(path.join(ROOT, 'acks.json'), null);
+  if (acks) fs.writeFileSync(path.join(OUT_DIR, 'acks.json'), JSON.stringify(acks));
   // 다른 컴퓨터로 보낼 지시 (받음 표시가 올 때까지 매번 같이 올린다)와, 이 컴퓨터가 받아 넣은 지시의 받음 표시
   for (const m of sendMod.pendingOutbox()) {
     fs.mkdirSync(path.join(OUT_DIR, 'send', m.to), { recursive: true });
@@ -189,6 +192,9 @@ function pullOthers(cfg, interactive) {
       if (!derived.includes(k)) for (const ext of ['.js', '.speech.json']) try { fs.unlinkSync(path.join(LOGS_DIR, k + ext)); } catch (_) {}
     }
     receiveSends(cfg, own, ref, meta);
+    let acks = {};
+    try { acks = JSON.parse(git(IN_DIR, ['show', `${ref}:acks.json`])); } catch (_) {}
+    writeAtomic(path.join(dir, 'acks.json'), JSON.stringify(acks));
     writeAtomic(path.join(dir, 'meta.json'), JSON.stringify(meta));
     writeAtomic(path.join(dir, 'state.json'), JSON.stringify(state));
     writeAtomic(path.join(dir, 'derived.json'), JSON.stringify(derived));
@@ -212,7 +218,7 @@ function receiveSends(cfg, own, ref, meta) {
     try { return git(IN_DIR, ['ls-tree', '-r', '--name-only', ref, prefix]).split('\n').map((x) => x.trim()).filter((x) => x.endsWith('.json')); } catch (_) { return []; }
   };
   const done = readJson(INBOX_DONE, {});
-  let changed = false;
+  let changed = false, closedAny = false;
   if (own) {
     for (const f of list(`send/${own}/`)) {
       let m;
@@ -222,6 +228,7 @@ function receiveSends(cfg, own, ref, meta) {
       if (cfg.acceptSend === false) r = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
       else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) r = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
       else r = sendMod.deliverInbound(m);
+      if (r.ok && m.kind === 'close') closedAny = true;
       done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid };
       changed = true;
     }
@@ -233,6 +240,10 @@ function receiveSends(cfg, own, ref, meta) {
   }
   for (const id of Object.keys(done)) if (Date.now() - (done[id].at || 0) > 24 * 3600 * 1000) { delete done[id]; changed = true; }
   if (changed) writeAtomic(INBOX_DONE, JSON.stringify(done));
+  // 다른 컴퓨터가 보낸 해고·정리로 탭을 닫았으면 상태를 다시 만든다 (강제로 닫으면 퇴장 훅이 안 불린다)
+  if (closedAny) {
+    try { require('child_process').spawn(process.execPath, [path.join(ROOT, 'hook.js'), '--rebuild'], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); } catch (_) {}
+  }
 }
 
 // ---------- 회의록 보관 ----------

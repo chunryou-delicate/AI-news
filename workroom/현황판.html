@@ -666,6 +666,20 @@
   .send-list .bad b { color: var(--approval); }
   .sheet .actions { display: flex; gap: 8px; padding: 10px 16px 16px; align-items: center; flex-wrap: wrap; }
   .sheet .actions input { flex: 1; min-width: 200px; font: 12.5px ui-monospace, Consolas, monospace; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
+  /* 직원 해고: 세션 창 맨 아래 단추 + 한 번 더 묻는 확인 창 (사람 창보다 위) */
+  .fire-row { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; flex-wrap: wrap; }
+  .fire-btn { border: 1px solid var(--approval); background: transparent; color: var(--approval); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .fire-btn:hover, .fire-btn:focus-visible { background: var(--approval); color: #fff; }
+  .fire-btn:disabled { opacity: .5; cursor: default; }
+  .confirm { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(12, 14, 18, .55); }
+  .confirm[hidden] { display: none; }
+  .confirm-box { width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, .4); }
+  .confirm-box h4 { margin: 0 0 8px; font-size: 15px; }
+  .confirm-box p { margin: 0 0 14px; font-size: 13px; color: var(--muted); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+  .confirm-box p b { color: var(--approval); }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirm-actions button { border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: 8px; padding: 7px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+  .confirm-actions .danger { background: var(--approval); border-color: var(--approval); color: #fff; }
   .sheet .actions button { border: 0; background: var(--ink); color: var(--panel); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-weight: 600; }
 
   /* 3D 사무실 (office3d.js) */
@@ -907,6 +921,15 @@
       <input id="resumeCmd" readonly aria-label="이어서 열기 명령">
       <button id="copyBtn" type="button">명령 복사</button>
     </div>
+    <div class="fire-row" id="fireRow" hidden><button type="button" class="fire-btn" id="fireBtn">직원 해고</button><span class="send-note" id="fireNote"></span></div>
+  </div>
+</div>
+<!-- 직원 해고 확인 (한 번 더 묻는다) -->
+<div class="confirm" id="fireConfirm" role="alertdialog" aria-modal="true" aria-labelledby="fireTitle" hidden>
+  <div class="confirm-box">
+    <h4 id="fireTitle">직원을 해고할까요?</h4>
+    <p id="fireMsg"></p>
+    <div class="confirm-actions"><button type="button" id="fireCancel">취소</button><button type="button" class="danger" id="fireOk">해고</button></div>
   </div>
 </div>
 
@@ -1092,16 +1115,47 @@
   }
   var todoFilter = '';   // 위 숫자 칸을 누르면 확인할 일을 그 갈래만 보여 준다
   // 확인할 일 카드의 '확인' 단추로 치운 것. 열쇠는 세션 id + 그 상태가 시작된 시각이라, 상태가 바뀌면(새 보고·새 질문) 다시 뜬다.
-  // 이 브라우저에만 남는다 (PC 와 폰은 따로). 사흘 지난 것은 지운다.
+  // 서버로 열면 서버(acks.json)에 적어서 PC·폰·다른 컴퓨터 현황판이 같이 쓴다 (다른 컴퓨터는 동기화로, 지시를 보내도 확인한 것으로).
+  // 파일로 열면 이 브라우저에만 남고, 다른 데서 확인한 것(state.js 의 acks)도 같이 숨긴다. 사흘 지난 것은 지운다.
   var ACK_KEY = 'workroom-acked', ACK_KEEP = 3 * 86400000;
-  var acked = {}, showAcked = false, todoKeys = {};
+  var acked = {}, sharedAcks = {}, showAcked = false, todoKeys = {};
   try { acked = JSON.parse(localStorage.getItem(ACK_KEY) || '{}') || {}; } catch (_) {}
   function saveAcked() {
     var now = Date.now();
     Object.keys(acked).forEach(function (k) { if (now - acked[k] > ACK_KEEP) delete acked[k]; });
     try { localStorage.setItem(ACK_KEY, JSON.stringify(acked)); } catch (_) {}
   }
-  function ackKey(it) { return it.m ? 'mt:' + it.m.key + '|' + (it.m.updatedAt || 0) : it.s.id + '|' + (it.s.stateSince || 0); }
+  // 회의 의견 대기는 의장 세션 id 로 (회의 키는 컴퓨터마다 앞에 붙는 것이 달라서)
+  function ackKey(it) { return it.m ? 'mt:' + (it.m.chairId || it.m.key) + '|' + (it.m.updatedAt || 0) : it.s.id + '|' + (it.s.stateSince || 0); }
+  function isAcked(k) { return SERVER ? !!sharedAcks[k] : !!(acked[k] || sharedAcks[k]); }
+  function setAck(keys, on) {
+    if (!keys.length) return;
+    if (SERVER) {
+      keys.forEach(function (k) { if (on) sharedAcks[k] = Date.now(); else delete sharedAcks[k]; });   // 바로 보이게 하고 서버 답으로 맞춘다
+      render();
+      postJson('__ack', { keys: keys, on: on }).then(function (j) { if (j.ok && j.acks) { sharedAcks = j.acks; render(); } });
+    } else {
+      keys.forEach(function (k) { if (on) acked[k] = Date.now(); else delete acked[k]; });
+      saveAcked();
+      render();
+    }
+  }
+  // 서버로 열었을 때: 다른 기기·컴퓨터에서 확인한 것을 5초마다 받아 온다. 예전에 이 브라우저에만 적어 둔 것은 처음 한 번 서버로 옮긴다.
+  function loadAcks() {
+    fetch('__acks', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok || !j.acks) return;
+      var changed = JSON.stringify(j.acks) !== JSON.stringify(sharedAcks);
+      sharedAcks = j.acks;
+      if (changed && data) render();
+    }, function () {});
+  }
+  function startAcks() {
+    if (!SERVER) return;
+    var mine = Object.keys(acked);
+    if (mine.length) postJson('__ack', { keys: mine, on: true }).then(function (j) { if (j.ok) { acked = {}; saveAcked(); if (j.acks) sharedAcks = j.acks; if (data) render(); } });
+    else loadAcks();
+    setInterval(loadAcks, 5000);
+  }
   // 접어 둔 카드(card:)·확인할 일 갈래(grp:)·직원 목록 층(floor:)과 파트(part:)
   var FOLD_KEY = 'workroom-fold';
   var fold = {};
@@ -1756,6 +1810,7 @@
 
     var count = function (st) { return sessions.filter(function (s) { return s.state === st; }).length; };
     // 확인할 일을 갈래별로: 승인 대기 · 질문(회의 의견 대기 포함) · 완료 보고 · 막힘
+    if (!SERVER) sharedAcks = data.acks || {};   // 파일로 열면 state.js 에 실린 것 (다른 기기·컴퓨터에서 확인한 것)
     var cats = { approval: [], question: [], error: [], report: [] }, ackedItems = [];
     sessions.forEach(function (s) { var c = catOf(s); if (c) cats[c].push({ c: c, s: s, t: s.stateSince }); });
     meetingWaits.forEach(function (m) { cats.question.push({ c: 'question', m: m, t: m.updatedAt }); });
@@ -1763,7 +1818,7 @@
     Object.keys(cats).forEach(function (c) {
       cats[c] = cats[c].filter(function (it) {
         it.k = ackKey(it);
-        if (!acked[it.k]) return true;
+        if (!isAcked(it.k)) return true;
         ackedItems.push(it);
         return false;
       });
@@ -2320,7 +2375,7 @@
   }
   // 확인할 일 카드 오른쪽 아래 단추 (치운 것을 보는 중이면 '되살리기')
   function todoLi(ak, inner, extra) {
-    var done = !!acked[ak];
+    var done = isAcked(ak);
     return '<li class="todo-li' + (done ? ' acked' : '') + (extra ? ' has-qr' : '') + '">' + inner + (extra || '') +
       '<button type="button" class="ack" data-ack="' + esc(ak) + '" title="' + (done ? '확인할 일로 되돌리기' : '확인했어요 — 목록에서 치우기 (상태가 바뀌면 다시 떠요)') + '">' + (done ? '되살리기' : '확인') + '</button></li>';
   }
@@ -2352,7 +2407,7 @@
   // 사원 명부처럼 파트마다 지금 누가 무엇을 하는지 한 줄씩. 누르면 세션 창(지시 보내기)이 열린다.
   function staffInfo(s) {
     var c = catOf(s);
-    if (c === 'report' && acked[s.id + '|' + (s.stateSince || 0)]) return { label: '확인함', color: 'var(--idle)', rank: 3, calm: true };
+    if (c === 'report' && isAcked(s.id + '|' + (s.stateSince || 0))) return { label: '확인함', color: 'var(--idle)', rank: 3, calm: true };
     if (c) return { label: CAT[c].label, color: CAT[c].color, rank: c === 'report' ? 3 : c === 'error' ? 1 : 0 };
     var st = STATE[s.state] || STATE.idle;
     return { label: st.label, color: st.color, rank: s.state === 'working' ? 2 : 4, calm: s.state === 'idle' };
@@ -2434,6 +2489,7 @@
   // ---------- 서버로 열었을 때만 되는 것 (지시 보내기·고용·일감·정리) ----------
   var SERVER = /^https?:$/.test(location.protocol);
   if (!SERVER) document.body.classList.add('file-mode');
+  startAcks();
   function postJson(url, body) {
     return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify(body) })
       .then(function (r) { return r.json(); }, function () { return { ok: false, error: '서버에 닿지 못했어요' }; })
@@ -2882,9 +2938,7 @@
       var cn = document.getElementById('cleanNote');
       if (!sids.length) { cn.textContent = '고른 세션이 없어요.'; return; }
       if (act.getAttribute('data-clean-act') === 'ack') {
-        sids.forEach(function (id) { var s = byId[id]; if (s) acked[s.id + '|' + (s.stateSince || 0)] = Date.now(); });
-        saveAcked();
-        render();
+        setAck(sids.filter(function (id) { return byId[id]; }).map(function (id) { return id + '|' + (byId[id].stateSince || 0); }), true);
         cn.textContent = sids.length + '개를 확인할 일에서 치웠어요.';
         return;
       }
@@ -3021,9 +3075,11 @@
     document.getElementById('sheetBody').innerHTML = rows.map(function (r) { var w = r[2] ? ' class="' + r[2] + '"' : ''; return '<dt' + w + '>' + r[0] + '</dt><dd' + w + '>' + r[1] + '</dd>'; }).join('');
     document.querySelector('.sheet .actions').style.display = s.synthetic ? 'none' : '';
     document.getElementById('resumeCmd').value = s.synthetic ? '' : 'cd "' + s.cwd + '"; claude --resume ' + s.id;
+    syncFireRow(s, false);
   }
   function openSheet(id) {
     openId = id;
+    syncFireRow(byId[id], true);
     // 지난번에 못 찾은 전체 답변은 다시 찾아본다 (그사이 회의록이 왔을 수 있다)
     Object.keys(fullAns).forEach(function (k) { if (fullAns[k] === false && k.indexOf(id + '|') === 0) delete fullAns[k]; });
     fillSheet(id);
@@ -3031,7 +3087,48 @@
     document.getElementById('scrim').classList.add('open');
     document.getElementById('sheetClose').focus();
   }
+  // ---------- 직원 해고 ----------
+  // 세션 창의 '직원 해고' → 한 번 더 묻는 창 → 그 세션의 Orca 탭을 닫는다 (일하는 중이어도). 다른 컴퓨터 세션은 동기화로 그 컴퓨터가 닫는다.
+  // 서버로 열었을 때, Orca 터미널에서 도는 세션만 (회의 역할·채팅 탭은 안 됨). 대화 기록은 남아 claude --resume 으로 다시 부를 수 있다.
+  var fireSid = null;
+  function canFire(s) { return /^https?:$/.test(location.protocol) && !!s && !s.synthetic && s.state !== 'ended' && s.app !== 'chat' && !!(s.orca && s.orca.terminal); }
+  function syncFireRow(s, fresh) {
+    var row = document.getElementById('fireRow');
+    row.hidden = !canFire(s);
+    if (fresh) { document.getElementById('fireNote').textContent = ''; document.getElementById('fireNote').className = 'send-note'; document.getElementById('fireBtn').disabled = false; }
+  }
+  function openFireConfirm() {
+    var s = byId[openId];
+    if (!canFire(s)) return;
+    fireSid = s.id;
+    var warn = s.state === 'working' ? '\n<b>지금 일하는 중이에요. 하던 일이 그대로 멈춰요.</b>' : (s.state === 'approval' || s.state === 'question') ? '\n<b>지금 답을 기다리는 중이에요.</b>' : '';
+    document.getElementById('fireMsg').innerHTML = '<strong>' + esc(titleOf(s)) + '</strong> · ' + esc(s.room) + '\n그 세션의 Orca 탭을 닫아요. 대화 기록은 남아서 <code>claude --resume</code> 으로 다시 부를 수 있어요.' +
+      warn + (s.machine ? '\n다른 컴퓨터(' + esc(s.machine) + ') 세션이라 그 컴퓨터가 동기화할 때(1~2분) 닫혀요.' : '');
+    document.getElementById('fireConfirm').hidden = false;
+    document.getElementById('fireCancel').focus();
+  }
+  function closeFireConfirm() { document.getElementById('fireConfirm').hidden = true; fireSid = null; }
+  document.getElementById('fireBtn').addEventListener('click', openFireConfirm);
+  document.getElementById('fireCancel').addEventListener('click', closeFireConfirm);
+  document.getElementById('fireConfirm').addEventListener('click', function (e) { if (e.target.id === 'fireConfirm') closeFireConfirm(); });
+  document.getElementById('fireOk').addEventListener('click', function () {
+    var sid = fireSid, s = byId[sid];
+    closeFireConfirm();
+    if (!sid) return;
+    var note = document.getElementById('fireNote'), btn = document.getElementById('fireBtn');
+    btn.disabled = true;
+    note.className = 'send-note';
+    note.textContent = '해고하는 중…';
+    postJson('__close', { sids: [sid], force: true }).then(function (j) {
+      var r = (j.results || [])[0] || j;
+      btn.disabled = false;
+      if (r.ok) note.textContent = r.status === 'queued' ? (s && s.machine ? s.machine : '다른 컴퓨터') + ' 로 보냈어요. 동기화 때 탭이 닫혀요.' : '해고했어요. 탭을 닫았어요.';
+      else { note.className = 'send-note err'; note.textContent = r.error || j.error || '해고하지 못했어요'; }
+    });
+  });
+
   function closeSheet() {
+    closeFireConfirm();
     openId = null;
     clearTimeout(sendPoll);
     document.getElementById('scrim').classList.remove('open');
@@ -3260,14 +3357,9 @@
     if (e.target.closest('#o3Jump')) { if (dock.folded) { dock.folded = false; applyDock(true); } scrollToSide(); return; }
     // 확인할 일: 카드 '확인'/'되살리기', 갈래 '모두 확인'/'모두 되살리기', '확인한 것 보기'
     var ab = e.target.closest('.ack[data-ack]');
-    if (ab) { var ak = ab.getAttribute('data-ack'); if (acked[ak]) delete acked[ak]; else acked[ak] = Date.now(); saveAcked(); render(); return; }
+    if (ab) { var ak = ab.getAttribute('data-ack'); setAck([ak], !isAcked(ak)); return; }
     var aa = e.target.closest('.grp-ack[data-ackall]');
-    if (aa) {
-      (todoKeys[aa.getAttribute('data-ackall')] || []).forEach(function (k) { if (showAcked) delete acked[k]; else acked[k] = Date.now(); });
-      saveAcked();
-      render();
-      return;
-    }
+    if (aa) { setAck((todoKeys[aa.getAttribute('data-ackall')] || []).slice(), !showAcked); return; }
     if (e.target.closest('#showAcked')) { showAcked = !showAcked; render(); return; }
     // 접기: 카드 제목·확인할 일 갈래·직원 목록 층과 파트
     var fh = e.target.closest('[data-fold]');
@@ -3344,7 +3436,8 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
-      if (document.getElementById('scrim').classList.contains('open')) closeSheet();
+      if (!document.getElementById('fireConfirm').hidden) closeFireConfirm();
+      else if (document.getElementById('scrim').classList.contains('open')) closeSheet();
       else if (cardSid) { cardSid = null; renderSpeechCard(); }
       else if (dock.pos === 'bottom' && !dock.folded) { dock.folded = true; applyDock(true); }   // 아래 메뉴로 열린 패널부터 닫는다
       else if (zoomRoom) exitRoom();
