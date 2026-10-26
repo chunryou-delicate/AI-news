@@ -576,14 +576,20 @@
   .o3-bub.alert.below::after { border-top-color: transparent; border-bottom-color: #fff3f2; }
   .o3-bub:hover { z-index: 40 !important; max-width: min(460px, 70vw); }
   .o3-bub:hover p { display: block; -webkit-line-clamp: unset; max-height: 50vh; overflow-y: auto; }
-  .o3-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 5; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: rgba(20, 24, 30, .74); }
-  .o3-tools button { border: 0; background: transparent; color: #fff; min-width: 32px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 15px; }
+  .o3-tools { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 5; display: flex; gap: 2px; padding: 4px; border-radius: 12px; background: rgba(20, 24, 30, .74); width: max-content; max-width: calc(100% - 16px); }
+  .o3-tools button { flex: none; white-space: nowrap; border: 0; background: transparent; color: #fff; min-width: 32px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 15px; }
   .o3-tools button:hover { background: rgba(255, 255, 255, .15); }
   .o3-tools .wide { padding: 0 10px; font-size: 12.5px; font-weight: 700; }
   .o3-tools button[aria-pressed="true"] { background: rgba(255, 255, 255, .2); }
   .o3-hint { position: absolute; left: 50%; bottom: 50px; transform: translateX(-50%); z-index: 4; max-width: calc(100% - 24px); padding: 3px 10px; border-radius: 8px; background: rgba(20, 24, 30, .6); color: #fff; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; transition: opacity .8s; }
   .o3-hint.fade { opacity: 0; }
   .o3-back { z-index: 6; }
+  /* 패널이 3D 아래로 내려가는 좁은 화면(폰)에서는 3D 를 쓸면 카메라가 돌아 패널까지 내려가기 어렵다 → 오른쪽 위 '목록' 단추로 바로 내려간다 */
+  .o3-jump { position: absolute; right: 10px; top: 10px; z-index: 6; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 999px; padding: 6px 12px; background: rgba(20, 24, 30, .74); color: #fff; font: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .o3-jump b { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--question); color: #fff; font-size: 11.5px; line-height: 18px; text-align: center; }
+  .o3-jump b:empty { display: none; }
+  @media (min-width: 1101px) { .o3-jump { display: none; } }
+  body.side-hide .o3-jump { display: none; }
   .o3-look { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 7; display: grid; gap: 8px; min-width: min(320px, calc(100% - 24px)); padding: 10px 12px; border-radius: 12px; background: rgba(20, 24, 30, .88); color: #fff; font-size: 12.5px; }
   .o3-look-row { display: flex; align-items: center; gap: 10px; }
   .o3-look-row > span { flex: none; width: 44px; color: #c9d1d9; font-weight: 700; }
@@ -1610,6 +1616,8 @@
     // 승인 대기 → 질문 → 막힘 → 완료 보고, 갈래마다 머리줄(누르면 접힘 · 모두 확인).
     // 기다리는 것은 오래 기다린 것부터, 완료 보고는 최근 것부터. '확인한 것 보기'면 치운 것만 같은 모양으로 (단추는 '되살리기').
     var todoCount = Object.keys(cats).reduce(function (n, c) { return n + cats[c].length; }, 0);
+    jumpCount = todoCount;
+    setJumpCount();
     var html = '', shownN = 0;
     todoKeys = {};
     Object.keys(CAT).sort(function (a, b) { return CAT[a].order - CAT[b].order; }).forEach(function (c) {
@@ -2395,7 +2403,14 @@
   }
   function addCard3d() {
     if (!document.getElementById('speechCard')) office3dEl.insertAdjacentHTML('beforeend', '<div class="speech-card" id="speechCard" role="dialog" aria-label="최근에 한 말" hidden></div>');
+    if (!document.getElementById('o3Jump')) office3dEl.insertAdjacentHTML('beforeend', '<button type="button" class="o3-jump" id="o3Jump" title="아래 패널(확인할 일·직원·회의록)로 내려가기">목록 <b id="o3JumpN"></b> ▾</button>');
+    setJumpCount();
   }
+  var jumpCount = 0;
+  function setJumpCount() { var b = document.getElementById('o3JumpN'); if (b) b.textContent = jumpCount ? String(jumpCount) : ''; }
+  // 패널이 화면 아래쪽에 깔려 있는지 (좁은 화면이고 숨기지 않았을 때)
+  function sideBelow() { return window.matchMedia('(max-width: 1100px)').matches && !document.body.classList.contains('side-hide'); }
+  function scrollToSide(el) { (el || document.querySelector('aside.side')).scrollIntoView({ block: 'start' }); }
   function start3d() {
     if (o3) { addCard3d(); o3.show(true); return; }
     if (o3Loading) return;
@@ -2440,7 +2455,15 @@
   document.addEventListener('click', function (e) {
     if (e.target.id === 'scrim') { closeSheet(); return; }
     var chip = e.target.closest('.chip[data-cat]');
-    if (chip) { var cc = chip.getAttribute('data-cat'); todoFilter = todoFilter === cc ? '' : cc; render(); return; }
+    if (chip) {
+      var cc = chip.getAttribute('data-cat');
+      todoFilter = todoFilter === cc ? '' : cc;
+      render();
+      // 폰처럼 패널이 아래에 있으면 거른 목록이 보이게 내려간다
+      if (todoFilter && sideBelow() && !zoomRoom) scrollToSide(document.getElementById('todo').closest('.card'));
+      return;
+    }
+    if (e.target.closest('#o3Jump')) { scrollToSide(); return; }
     // 확인할 일: 카드 '확인'/'되살리기', 갈래 '모두 확인'/'모두 되살리기', '확인한 것 보기'
     var ab = e.target.closest('.ack[data-ack]');
     if (ab) { var ak = ab.getAttribute('data-ack'); if (acked[ak]) delete acked[ak]; else acked[ak] = Date.now(); saveAcked(); render(); return; }
