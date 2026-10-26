@@ -2609,18 +2609,21 @@
         if (t.hasAttribute('data-pid')) { host.person(t.getAttribute('data-pid')); return; }
         var a = actors[t.getAttribute('data-bid')];
         if (!a) return;
-        if (focus && a.room === focus) host.speech(a.id); else host.room(a.room);
+        // 말풍선을 누르면 방에 들어가지 않고 그 사람이 한 말 카드만
+        host.speech(a.id);
       });
 
+      // 손가락은 마우스보다 굵어서, 터치 화면에서는 사람을 고르는 범위를 넓힌다 (사람을 눌렀는데 방에 들어가 버리지 않게)
+      var TOUCH = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
       function pick(px, py) {
         if (!W) return;
         var best = null, bd = 1e9;
         Object.keys(actors).forEach(function (id) {
           var a = actors[id], sc = a.scr;
           if (!sc || a.alpha < 0.5) return;
-          var hw = Math.max(10, sc.ppm * 0.3), hb = Math.max(24, sc.ppm * (SITTING[a.pose] ? 1.0 : 1.5));
+          var hw = Math.max(TOUCH ? 20 : 10, sc.ppm * (TOUCH ? 0.45 : 0.3)), hb = Math.max(TOUCH ? 34 : 24, sc.ppm * (SITTING[a.pose] ? 1.0 : 1.5));
           var dx = Math.abs(px - sc.x), dy = py - sc.y;
-          if (dx > hw || dy < -6 || dy > hb) return;
+          if (dx > hw || dy < (TOUCH ? -14 : -6) || dy > hb) return;
           if (dx < bd) { bd = dx; best = a; }
         });
         // 대표: 누르면 고르고/놓고, 고른 동안 바닥을 누르면 그리로 걸어간다

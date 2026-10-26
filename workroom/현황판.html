@@ -638,7 +638,7 @@
   .foot code { font-family: ui-monospace, Consolas, monospace; background: var(--panel); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); }
 
   /* 상세 */
-  .scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .5); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .5); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 40; }   /* 아래 메뉴(31)보다 위 */
   .scrim.open { display: flex; }
   .sheet { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
   .sheet header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
@@ -872,7 +872,7 @@
           <ul class="staff room-staff" id="roomStaff"></ul>
         </section>
         <section class="card minutes" data-pane="minutes">
-          <h2>회의록 <span class="n" id="minRoom"></span></h2>
+          <h2><button type="button" class="fold-h" data-fold="card:roomminutes" aria-expanded="true">이 방 회의록 <span class="n" id="minRoom"></span></button></h2>
           <p class="min-sub" id="minSub"></p>
           <div class="min-tools">
             <div class="seg" role="group" aria-label="회의록 보기">
@@ -2037,8 +2037,6 @@
 
   function enterRoom(name) {
     if (zoomRoom || !data) return;
-    // 패널이 열려 있으면 회의록 탭으로 (이 방 회의록이 맨 위에 온다)
-    if (!dock.folded && dock.tab !== 'minutes') { dock.tab = 'minutes'; applyDock(true); }
     openTreeForRoom(name);
     if (dim === '3d') {
       // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
@@ -3165,7 +3163,8 @@
     // 다른 방으로 바로 옮길 때는 주소 기록 칸을 그대로 두고 방 이름만 바꾼다
     room: function (name) { if (zoomRoom === name) return; if (zoomRoom) leaveRoomNow(true); enterRoom(name); },
     person: function (id) { openSheet(id); },
-    speech: function (id) { cardSid = id; lastCardKey = ''; renderSpeechCard(); },
+    // 말풍선: 방 안이면 최근에 한 말 카드, 방 밖이면 그 사람 창 (마지막 답변 전체)
+    speech: function (id) { if (!zoomRoom) { openSheet(id); return; } cardSid = id; lastCardKey = ''; renderSpeechCard(); },
     back: function () { exitRoom(); }
   };
   // 애니메이션 없이 바로 회의실에서 나온다 (2D/3D 바꿀 때, 3D 에서 나갈 때).
@@ -3314,9 +3313,11 @@
     if (e.target.closest('#rvBack') || e.target.closest('#roomExit') || e.target.closest('.rv-door')) { exitRoom(); return; }
     if (e.target.closest('.sc-close')) { cardSid = null; renderSpeechCard(); return; }
     var bub = e.target.closest('.sb');
-    if (bub) { cardSid = bub.getAttribute('data-id'); lastCardKey = ''; renderSpeechCard(); return; }
+    if (bub) { if (!zoomRoom) { openSheet(bub.getAttribute('data-id')); return; } cardSid = bub.getAttribute('data-id'); lastCardKey = ''; renderSpeechCard(); return; }
     if (cardSid && !e.target.closest('.speech-card')) { cardSid = null; renderSpeechCard(); }
-    // 평면도에서는 방 어디를 눌러도 그 회의실로 들어간다.
+    // 평면도에서 사람(명패 포함)을 누르면 방에 들어가지 않고 그 사람 창만 연다. 그 밖의 방 자리는 회의실로 들어간다.
+    var who = e.target.closest('.room-cell [data-id]');
+    if (who && !zoomRoom) { openSheet(who.getAttribute('data-id')); return; }
     var cell = e.target.closest('.room-cell');
     if (cell && !zoomRoom) { if (cell.getAttribute('data-room')) enterRoom(cell.getAttribute('data-room')); return; }
     var more = e.target.closest('.m-more');
