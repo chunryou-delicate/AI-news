@@ -415,7 +415,7 @@
   @keyframes flicker { 50% { opacity: .75; } }
   @keyframes alertPulse { 50% { box-shadow: inset 0 0 0 3px transparent; } }
   @media (prefers-reduced-motion: reduce) {
-    .eyes, .typing .hand-l, .typing .hand-r, .b-approval, .b-question, .tdot, .led-blink, .steam, .screen-glow, .room-cell.alert::after { animation: none !important; }
+    .eyes, .typing .hand-l, .typing .hand-r, .b-approval, .b-question, .tdot, .led-blink, .steam, .screen-glow, .room-cell.alert::after, .staff-row.working .s-dot { animation: none !important; }
   }
 
   /* 오른쪽 */
@@ -439,6 +439,59 @@
   .stale-tag { flex: none; margin-left: auto; font-size: 10.5px; font-weight: 800; color: #fff; background: var(--approval); border-radius: 4px; padding: 0 5px; }
   .stale-tag + .ago { margin-left: 0; }
   .empty-note { color: var(--muted); font-size: 12.5px; padding: 12px; text-align: center; }
+  /* 카드 접기: 제목을 누르면 접히고 숫자만 남는다 */
+  .fold-h { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .fold-h::before, .grp-h::before, .part-h::before, .floor-h::before { content: "▸"; flex: none; width: 10px; color: var(--muted); font-size: 11px; transition: transform .15s; }
+  .fold-h[aria-expanded="true"]::before, .grp-h[aria-expanded="true"]::before, .part-h[aria-expanded="true"]::before, .floor-h[aria-expanded="true"]::before { transform: rotate(90deg); }
+  .card.folded > :not(h2) { display: none; }
+  .card.folded h2 { border-bottom: 0; padding-bottom: 10px; }
+  /* 확인할 일: 갈래마다 머리줄(접기·모두 확인), 카드 오른쪽 아래 '확인' 단추 */
+  .todo-bar { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px 0; }
+  .todo-bar:empty { display: none; }
+  .todo-grp { display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; }
+  .todo-grp:not(:first-child) { margin-top: 4px; }
+  .grp-h { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 800; padding: 3px 4px; border-radius: 6px; cursor: pointer; text-align: left; }
+  .grp-h:hover { background: var(--panel-2); }
+  .grp-h i { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--gc); }
+  .grp-h b { color: var(--muted); font-weight: 700; }
+  .grp-h .chip-old { margin-left: 2px; }
+  .grp-ack, .bar-btn, .ack { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 2px 9px; font: inherit; font-size: 11.5px; font-weight: 700; line-height: 1.5; cursor: pointer; }
+  .grp-ack:hover, .ack:hover { background: var(--done); border-color: var(--done); color: #fff; }
+  .bar-btn:hover { border-color: var(--muted); }
+  .bar-btn[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+  .todo-li { position: relative; }
+  .todo-li .ack { position: absolute; right: 7px; bottom: 6px; padding: 0 9px; }
+  .todo-li .row3, .todo-li .row2:last-child { padding-right: 46px; }
+  .todo-li.acked .item { opacity: .6; }
+  .todo-li.acked .row3, .todo-li.acked .row2:last-child { padding-right: 66px; }
+  /* 직원 목록: 층(컴퓨터) ▸ 파트(방) ▸ 직원(세션) */
+  .staff-seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 8px 2px; }
+  .staff-seg button { border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .staff-seg button b { margin-left: 3px; font-weight: 700; color: var(--muted); }
+  .staff-seg button.on { background: var(--ink); border-color: var(--ink); color: var(--panel); font-weight: 700; }
+  .staff-seg button.on b { color: inherit; opacity: .75; }
+  .staff { list-style: none; margin: 0; padding: 4px 6px 8px; }
+  .staff ul { list-style: none; margin: 0; padding: 0; }
+  .floor-h, .part-h { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+  .floor-h { margin-top: 6px; padding: 5px 6px; font-size: 12.5px; font-weight: 800; border-bottom: 1px solid var(--line); border-radius: 6px 6px 0 0; }
+  .staff > li:first-child > .floor-h { margin-top: 0; }
+  .part-h { padding: 5px 6px; font-size: 13px; font-weight: 700; }
+  .floor-h:hover, .part-h:hover { background: var(--panel-2); }
+  .floor-h .n, .part-h .n { margin-left: auto; color: var(--muted); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .p-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-dots { flex: none; display: inline-flex; gap: 2px; align-items: center; }
+  .p-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+  .p-dots em { font-style: normal; font-size: 10.5px; color: var(--muted); margin-left: 1px; }
+  .staff-list { padding-left: 16px !important; display: grid; gap: 1px; margin-bottom: 2px !important; }
+  .staff-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; column-gap: 7px; align-items: center; width: 100%; border: 0; border-radius: 6px; background: none; padding: 4px 6px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+  .staff-row:hover { background: var(--panel-2); }
+  .s-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sc); }
+  .staff-row.working .s-dot { animation: fade 1.6s ease-in-out infinite; }
+  .s-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-st { font-size: 11.5px; font-weight: 700; color: var(--sc); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .s-sub { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .staff-row.calm .s-name { color: var(--muted); }
+  .p-empty { padding: 3px 6px 6px 22px; font-size: 11.5px; color: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 10px 12px 4px; font-size: 12px; color: var(--muted); }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
   .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
@@ -600,19 +653,17 @@
       <div class="side-grip" id="sideGrip" title="끌어서 패널 폭 바꾸기" role="separator" aria-orientation="vertical"></div>
       <div class="side" id="sideDefault">
         <section class="card">
-          <h2>확인할 일 <span class="n" id="todoN"></span></h2>
+          <h2><button type="button" class="fold-h" data-fold="card:todo" aria-expanded="true">확인할 일 <span class="n" id="todoN"></span></button></h2>
+          <div class="todo-bar" id="todoBar"></div>
           <ul class="list" id="todo"></ul>
         </section>
         <section class="card">
-          <h2>일하는 중 <span class="n" id="busyN"></span></h2>
-          <ul class="list" id="busy"></ul>
+          <h2><button type="button" class="fold-h" data-fold="card:staff" aria-expanded="true">직원 <span class="n" id="staffN"></span></button></h2>
+          <div class="staff-seg" id="staffSeg" role="group" aria-label="직원 보기"></div>
+          <ul class="staff" id="staff"></ul>
         </section>
         <section class="card">
-          <h2>대기 중 <span class="n" id="idleN"></span></h2>
-          <ul class="list" id="idleList"></ul>
-        </section>
-        <section class="card">
-          <h2>회의록 <span class="n" id="treeN"></span></h2>
+          <h2><button type="button" class="fold-h" data-fold="card:tree" aria-expanded="true">회의록 <span class="n" id="treeN"></span></button></h2>
           <ul class="min-tree" id="minTree"></ul>
         </section>
         <section class="card">
@@ -840,6 +891,34 @@
     return d >= STALE_AFTER ? 'stale' : d >= OLD_AFTER ? 'old' : '';
   }
   var todoFilter = '';   // 위 숫자 칸을 누르면 확인할 일을 그 갈래만 보여 준다
+  // 확인할 일 카드의 '확인' 단추로 치운 것. 열쇠는 세션 id + 그 상태가 시작된 시각이라, 상태가 바뀌면(새 보고·새 질문) 다시 뜬다.
+  // 이 브라우저에만 남는다 (PC 와 폰은 따로). 사흘 지난 것은 지운다.
+  var ACK_KEY = 'workroom-acked', ACK_KEEP = 3 * 86400000;
+  var acked = {}, showAcked = false, todoKeys = {};
+  try { acked = JSON.parse(localStorage.getItem(ACK_KEY) || '{}') || {}; } catch (_) {}
+  function saveAcked() {
+    var now = Date.now();
+    Object.keys(acked).forEach(function (k) { if (now - acked[k] > ACK_KEEP) delete acked[k]; });
+    try { localStorage.setItem(ACK_KEY, JSON.stringify(acked)); } catch (_) {}
+  }
+  function ackKey(it) { return it.m ? 'mt:' + it.m.key + '|' + (it.m.updatedAt || 0) : it.s.id + '|' + (it.s.stateSince || 0); }
+  // 접어 둔 카드(card:)·확인할 일 갈래(grp:)·직원 목록 층(floor:)과 파트(part:)
+  var FOLD_KEY = 'workroom-fold';
+  var fold = {};
+  try { fold = JSON.parse(localStorage.getItem(FOLD_KEY) || '{}') || {}; } catch (_) {}
+  function saveFold() { try { localStorage.setItem(FOLD_KEY, JSON.stringify(fold)); } catch (_) {} }
+  function applyCardFolds() {
+    document.querySelectorAll('#sideDefault .fold-h[data-fold]').forEach(function (b) {
+      var f = !!fold[b.getAttribute('data-fold')];
+      b.setAttribute('aria-expanded', String(!f));
+      b.closest('.card').classList.toggle('folded', f);
+    });
+  }
+  applyCardFolds();
+  var STAFF_KEY = 'workroom-staff';
+  var STAFF_FILTER = [['all', '전체'], ['working', '일하는 중'], ['turn', '내 차례'], ['idle', '대기']];
+  var staffFilter = 'all';
+  try { staffFilter = localStorage.getItem(STAFF_KEY) || 'all'; } catch (_) {}
 
   function detailLine(s) {
     if (s.state === 'approval' || s.state === 'question') return s.waitingFor || '확인이 필요해요';
@@ -1477,9 +1556,19 @@
 
     var count = function (st) { return sessions.filter(function (s) { return s.state === st; }).length; };
     // 확인할 일을 갈래별로: 승인 대기 · 질문(회의 의견 대기 포함) · 완료 보고 · 막힘
-    var cats = { approval: [], question: [], error: [], report: [] };
-    sessions.forEach(function (s) { var c = catOf(s); if (c) cats[c].push({ s: s, t: s.stateSince }); });
-    meetingWaits.forEach(function (m) { cats.question.push({ m: m, t: m.updatedAt }); });
+    var cats = { approval: [], question: [], error: [], report: [] }, ackedItems = [];
+    sessions.forEach(function (s) { var c = catOf(s); if (c) cats[c].push({ c: c, s: s, t: s.stateSince }); });
+    meetingWaits.forEach(function (m) { cats.question.push({ c: 'question', m: m, t: m.updatedAt }); });
+    // '확인'으로 치운 것은 숫자와 목록에서 뺀다 ('확인한 것 보기'로 다시 볼 수 있다)
+    Object.keys(cats).forEach(function (c) {
+      cats[c] = cats[c].filter(function (it) {
+        it.k = ackKey(it);
+        if (!acked[it.k]) return true;
+        ackedItems.push(it);
+        return false;
+      });
+    });
+    if (!ackedItems.length) showAcked = false;
     var waiting = cats.approval.length + cats.question.length;
     var used = {};
     sessions.forEach(function (s) { if (s.state !== 'ended') used[s.room] = true; });
@@ -1518,26 +1607,31 @@
     }
     renderSide();
 
-    // 승인 대기 → 질문 → 막힘 → 완료 보고. 기다리는 것은 오래 기다린 것부터, 완료 보고는 최근 것부터.
-    var todo = [];
-    Object.keys(cats).forEach(function (c) {
-      if (todoFilter && c !== todoFilter) return;
-      cats[c].forEach(function (it) { todo.push({ c: c, s: it.s, m: it.m, t: it.t || 0 }); });
-    });
-    todo.sort(function (a, b) { return CAT[a.c].order - CAT[b.c].order || (a.c === 'report' ? b.t - a.t : a.t - b.t); });
+    // 승인 대기 → 질문 → 막힘 → 완료 보고, 갈래마다 머리줄(누르면 접힘 · 모두 확인).
+    // 기다리는 것은 오래 기다린 것부터, 완료 보고는 최근 것부터. '확인한 것 보기'면 치운 것만 같은 모양으로 (단추는 '되살리기').
     var todoCount = Object.keys(cats).reduce(function (n, c) { return n + cats[c].length; }, 0);
-    document.getElementById('todoN').textContent = todoCount ? (todoFilter ? todo.length + ' / ' : '') + todoCount + '건' : '';
-    document.getElementById('todo').innerHTML = todo.length ? todo.map(function (it) { return it.m ? meetingItemHtml(it.m) : itemHtml(it.s, it.c); }).join('') :
-      '<li class="empty-note">지금은 확인할 일이 없어요.</li>';
-    var busy = sessions.filter(function (s) { return s.state === 'working'; }).sort(function (a, b) { return a.stateSince - b.stateSince; });
-    document.getElementById('busyN').textContent = busy.length ? busy.length + '개' : '';
-    document.getElementById('busy').innerHTML = busy.length ? busy.map(function (s) { return itemHtml(s); }).join('') : '<li class="empty-note">일하는 AI가 없어요.</li>';
-    // 열어만 두고 아직 일을 안 받은 세션 (지시 보내기로 바로 일을 줄 수 있게 눌러서 세션 창을 연다). 이 컴퓨터 것이 먼저.
-    var idle = sessions.filter(function (s) { return s.state === 'idle'; }).sort(function (a, b) {
-      return (a.machine ? 1 : 0) - (b.machine ? 1 : 0) || String(a.room).localeCompare(String(b.room)) || (b.stateSince || 0) - (a.stateSince || 0);
+    var html = '', shownN = 0;
+    todoKeys = {};
+    Object.keys(CAT).sort(function (a, b) { return CAT[a].order - CAT[b].order; }).forEach(function (c) {
+      if (todoFilter && c !== todoFilter) return;
+      var list = (showAcked ? ackedItems.filter(function (it) { return it.c === c; }) : cats[c]).slice().sort(function (a, b) {
+        return c === 'report' ? (b.t || 0) - (a.t || 0) : (a.t || 0) - (b.t || 0);
+      });
+      if (!list.length) return;
+      shownN += list.length;
+      todoKeys[c] = list.map(function (it) { return it.k; });
+      var fk = 'grp:' + c, folded = !!fold[fk], st = showAcked ? 0 : staleN(list);
+      html += '<li class="todo-grp" style="--gc:' + CAT[c].color + '"><button type="button" class="grp-h" data-fold="' + fk + '" aria-expanded="' + !folded + '">' +
+        '<i></i>' + CAT[c].label + ' <b>' + list.length + '</b>' + (st ? '<span class="chip-old">방치 ' + st + '</span>' : '') + '</button>' +
+        (list.length > 1 ? '<button type="button" class="grp-ack" data-ackall="' + c + '">' + (showAcked ? '모두 되살리기' : '모두 확인') + '</button>' : '') + '</li>';
+      if (!folded) html += list.map(function (it) { return it.m ? meetingItemHtml(it.m, it.k) : itemHtml(it.s, c, it.k); }).join('');
     });
-    document.getElementById('idleN').textContent = idle.length ? idle.length + '개' : '';
-    document.getElementById('idleList').innerHTML = idle.length ? idle.map(function (s) { return itemHtml(s); }).join('') : '<li class="empty-note">대기 중인 세션이 없어요.</li>';
+    document.getElementById('todoN').textContent = todoCount ? (todoFilter && !showAcked ? shownN + ' / ' : '') + todoCount + '건' : '';
+    document.getElementById('todoBar').innerHTML = ackedItems.length ?
+      '<button type="button" class="bar-btn" id="showAcked" aria-pressed="' + showAcked + '">' + (showAcked ? '확인할 일로 돌아가기' : '확인한 것 ' + ackedItems.length + '건 보기') + '</button>' : '';
+    document.getElementById('todo').innerHTML = html ||
+      '<li class="empty-note">' + (todoFilter ? CAT[todoFilter].label + ' 항목이 없어요.' : '지금은 확인할 일이 없어요.') + '</li>';
+    renderStaff(sessions, now);
 
     if (openId) fillSheet(openId);
   }
@@ -1994,28 +2088,116 @@
   function agoHtml(t, now) {
     return (ageClass(t, now) === 'stale' ? '<span class="stale-tag">방치</span>' : '') + '<span class="ago">' + ago(t, now) + ' 전</span>';
   }
-  function meetingItemHtml(m) {
+  // 확인할 일 카드 오른쪽 아래 단추 (치운 것을 보는 중이면 '되살리기')
+  function todoLi(ak, inner) {
+    var done = !!acked[ak];
+    return '<li class="todo-li' + (done ? ' acked' : '') + '">' + inner +
+      '<button type="button" class="ack" data-ack="' + esc(ak) + '" title="' + (done ? '확인할 일로 되돌리기' : '확인했어요 — 목록에서 치우기 (상태가 바뀌면 다시 떠요)') + '">' + (done ? '되살리기' : '확인') + '</button></li>';
+  }
+  function meetingItemHtml(m, ak) {
     var now = Date.now(), a = ageClass(m.updatedAt, now);
-    return '<li><button type="button" class="item' + (a ? ' ' + a : '') + '"' + (m.chairId ? ' data-id="' + esc(m.chairId) + '"' : '') + ' style="border-left-color:var(--question)">' +
+    return todoLi(ak, '<button type="button" class="item' + (a ? ' ' + a : '') + '"' + (m.chairId ? ' data-id="' + esc(m.chairId) + '"' : '') + ' style="border-left-color:var(--question)">' +
       '<div class="row1"><span class="pill" style="background:var(--question)">의견 대기</span><span class="room-name">' + esc(m.room) + '</span><span>회의</span>' +
       agoHtml(m.updatedAt, now) + '</div>' +
       '<div class="row2">안건 ' + esc(m.agenda) + '</div>' +
-      '<div class="row3">' + esc(m.waitingReason || roundPhase(m)) + '</div></button></li>';
+      '<div class="row3">' + esc(m.waitingReason || roundPhase(m)) + '</div></button>');
   }
 
-  // cat: 확인할 일 갈래 (승인 대기·질문·완료 보고·막힘). 없으면(일하는 중 목록) 세션 상태대로.
-  function itemHtml(s, cat) {
-    var st = cat ? CAT[cat] : STATE[s.state] || STATE.idle;
+  // cat: 확인할 일 갈래 (승인 대기·질문·완료 보고·막힘), ak: 그 항목의 '확인' 열쇠
+  function itemHtml(s, cat, ak) {
+    var st = CAT[cat];
     var now = Date.now();
-    var subs = (s.subagents || []).length, a = cat ? ageClass(s.stateSince, now) : '';
+    var subs = (s.subagents || []).length, a = ageClass(s.stateSince, now);
     // 승인·질문은 무엇을 묻는지(마지막 답변 끝의 그 문장)를 보여 준다
     var detail = s.state === 'done' && (cat === 'approval' || cat === 'question') ? s.askText || askKind(s.lastMessage).text || detailLine(s) : detailLine(s);
-    return '<li><button type="button" class="item' + (a ? ' ' + a : '') + '" data-id="' + esc(s.id) + '" style="border-left-color:' + st.color + '">' +
+    return todoLi(ak, '<button type="button" class="item' + (a ? ' ' + a : '') + '" data-id="' + esc(s.id) + '" style="border-left-color:' + st.color + '">' +
       '<div class="row1"><span class="pill" style="background:' + st.color + '">' + st.label + '</span><span class="room-name">' + esc(s.room) + '</span>' +
       (roleOf[s.id] ? '<span>' + esc(roleOf[s.id]) + '</span>' : '') +
-      (s.app === 'chat' ? '<span>채팅</span>' : '') + (subs ? '<span>워커 ' + subs + '</span>' : '') + (cat ? agoHtml(s.stateSince, now) : '<span class="ago">' + ago(s.stateSince, now) + ' 전</span>') + '</div>' +
+      (s.app === 'chat' ? '<span>채팅</span>' : '') + (subs ? '<span>워커 ' + subs + '</span>' : '') + agoHtml(s.stateSince, now) + '</div>' +
       '<div class="row2">' + esc(titleOf(s)) + '</div>' +
-      (detail ? '<div class="row3">' + esc(detail) + '</div>' : '') + '</button></li>';
+      (detail ? '<div class="row3">' + esc(detail) + '</div>' : '') + '</button>');
+  }
+
+  // ---------- 직원 목록: 층(컴퓨터) ▸ 파트(방) ▸ 직원(세션) ----------
+  // 사원 명부처럼 파트마다 지금 누가 무엇을 하는지 한 줄씩. 누르면 세션 창(지시 보내기)이 열린다.
+  function staffInfo(s) {
+    var c = catOf(s);
+    if (c === 'report' && acked[s.id + '|' + (s.stateSince || 0)]) return { label: '확인함', color: 'var(--idle)', rank: 3, calm: true };
+    if (c) return { label: CAT[c].label, color: CAT[c].color, rank: c === 'report' ? 3 : c === 'error' ? 1 : 0 };
+    var st = STATE[s.state] || STATE.idle;
+    return { label: st.label, color: st.color, rank: s.state === 'working' ? 2 : 4, calm: s.state === 'idle' };
+  }
+  function staffMatch(s) {
+    if (staffFilter === 'working') return s.state === 'working';
+    if (staffFilter === 'idle') return s.state === 'idle';
+    if (staffFilter === 'turn') return !!catOf(s);
+    return true;
+  }
+  function staffRowHtml(s, now) {
+    var inf = staffInfo(s), subs = (s.subagents || []).length;
+    var sub = [roleOf[s.id], s.app === 'chat' ? '채팅' : '', subs ? '워커 ' + subs : '', plain(detailLine(s), 90)].filter(Boolean).join(' · ');
+    return '<li><button type="button" class="staff-row' + (s.state === 'working' ? ' working' : '') + (inf.calm ? ' calm' : '') + '" data-id="' + esc(s.id) + '" style="--sc:' + inf.color + '">' +
+      '<span class="s-dot"></span><span class="s-name">' + esc(titleOf(s)) + '</span>' +
+      '<span class="s-st">' + inf.label + ' · ' + (ago(s.stateSince, now) || '방금') + '</span>' +
+      (sub ? '<span class="s-sub">' + esc(sub) + '</span>' : '') + '</button></li>';
+  }
+  function renderStaff(sessions, now) {
+    var people = sessions.filter(function (s) { return s.state !== 'ended'; });
+    if (!STAFF_FILTER.some(function (f) { return f[0] === staffFilter; })) staffFilter = 'all';
+    var save = staffFilter;
+    document.getElementById('staffSeg').innerHTML = STAFF_FILTER.map(function (f) {
+      staffFilter = f[0];
+      var n = people.filter(staffMatch).length;
+      return '<button type="button" data-staff="' + f[0] + '" class="' + (save === f[0] ? 'on' : '') + '" aria-pressed="' + (save === f[0]) + '">' + f[1] + '<b>' + n + '</b></button>';
+    }).join('');
+    staffFilter = save;
+    var working = people.filter(function (s) { return s.state === 'working'; }).length;
+    document.getElementById('staffN').textContent = people.length ? people.length + '명' + (working ? ' · 일하는 중 ' + working : '') : '';
+
+    // 층은 이 컴퓨터가 먼저, 파트는 방 순서대로. 방 목록에 없는 방의 세션은 그 층 끝에 파트를 붙인다.
+    var floors = [], fBy = {};
+    function floorOf(m) {
+      if (!fBy[m]) { fBy[m] = { m: m, name: m || selfName() || '이 컴퓨터', parts: [], pBy: {} }; floors.push(fBy[m]); }
+      return fBy[m];
+    }
+    floorOf('');
+    roomsView().forEach(function (r) {
+      var f = floorOf(r.machine);
+      if (!f.pBy[r.name]) { f.pBy[r.name] = { name: r.name, label: r.label, people: [] }; f.parts.push(f.pBy[r.name]); }
+    });
+    people.forEach(function (s) {
+      var f = floorOf(s.machine || ''), p = f.pBy[s.room];
+      if (!p) {
+        var lb = s.machine && String(s.room).indexOf(s.machine + ' · ') === 0 ? String(s.room).slice(s.machine.length + 3) : s.room;
+        p = f.pBy[s.room] = { name: s.room, label: lb, people: [] };
+        f.parts.push(p);
+      }
+      p.people.push(s);
+    });
+    floors = floors.filter(function (f) { return !f.m || f.parts.some(function (p) { return p.people.length; }); });
+    var multi = floors.length > 1;
+    var html = '';
+    floors.forEach(function (f) {
+      var shown = f.parts.map(function (p) { return { p: p, list: p.people.filter(staffMatch) }; }).filter(function (x) { return x.list.length; });
+      var empty = f.parts.filter(function (p) { return !p.people.length; });
+      var n = shown.reduce(function (a, x) { return a + x.list.length; }, 0);
+      if (!n && staffFilter !== 'all') return;
+      var ffk = 'floor:' + (f.m || '@self'), ffold = multi && !!fold[ffk];
+      var inner = shown.map(function (x) {
+        x.list.sort(function (a, b) { var ra = staffInfo(a).rank, rb = staffInfo(b).rank; return ra - rb || (b.stateSince || 0) - (a.stateSince || 0); });
+        var pk = 'part:' + x.p.name, pfold = !!fold[pk];
+        var dots = x.list.slice(0, 10).map(function (s) { return '<i style="--c:' + staffInfo(s).color + '"></i>'; }).join('') + (x.list.length > 10 ? '<em>+' + (x.list.length - 10) + '</em>' : '');
+        return '<li><button type="button" class="part-h" data-fold="' + esc(pk) + '" aria-expanded="' + !pfold + '"><span class="p-name">' + esc(x.p.label) + '</span>' +
+          '<span class="p-dots">' + dots + '</span><span class="n">' + x.list.length + '명</span></button>' +
+          (pfold ? '' : '<ul class="staff-list">' + x.list.map(function (s) { return staffRowHtml(s, now); }).join('') + '</ul>') + '</li>';
+      }).join('');
+      if (staffFilter === 'all' && empty.length) inner += '<li class="p-empty">빈 파트 ' + empty.length + ' · ' + esc(empty.map(function (p) { return p.label; }).join(' · ')) + '</li>';
+      if (!inner) return;
+      html += multi ? '<li><button type="button" class="floor-h" data-fold="' + esc(ffk) + '" aria-expanded="' + !ffold + '"><span class="p-name">' + esc(f.name) + '</span><span class="n">' + n + '명</span></button>' +
+        (ffold ? '' : '<ul>' + inner + '</ul>') + '</li>' : inner;
+    });
+    var none = { all: '열려 있는 세션이 없어요.', working: '일하는 AI가 없어요.', turn: '내 차례인 세션이 없어요.', idle: '대기 중인 세션이 없어요.' };
+    document.getElementById('staff').innerHTML = html || '<li class="empty-note">' + none[staffFilter] + '</li>';
   }
 
   function fillSheet(id) {
@@ -2259,6 +2441,34 @@
     if (e.target.id === 'scrim') { closeSheet(); return; }
     var chip = e.target.closest('.chip[data-cat]');
     if (chip) { var cc = chip.getAttribute('data-cat'); todoFilter = todoFilter === cc ? '' : cc; render(); return; }
+    // 확인할 일: 카드 '확인'/'되살리기', 갈래 '모두 확인'/'모두 되살리기', '확인한 것 보기'
+    var ab = e.target.closest('.ack[data-ack]');
+    if (ab) { var ak = ab.getAttribute('data-ack'); if (acked[ak]) delete acked[ak]; else acked[ak] = Date.now(); saveAcked(); render(); return; }
+    var aa = e.target.closest('.grp-ack[data-ackall]');
+    if (aa) {
+      (todoKeys[aa.getAttribute('data-ackall')] || []).forEach(function (k) { if (showAcked) delete acked[k]; else acked[k] = Date.now(); });
+      saveAcked();
+      render();
+      return;
+    }
+    if (e.target.closest('#showAcked')) { showAcked = !showAcked; render(); return; }
+    // 접기: 카드 제목·확인할 일 갈래·직원 목록 층과 파트
+    var fh = e.target.closest('[data-fold]');
+    if (fh) {
+      var fk = fh.getAttribute('data-fold');
+      if (fold[fk]) delete fold[fk]; else fold[fk] = true;
+      saveFold();
+      applyCardFolds();
+      render();
+      return;
+    }
+    var sf = e.target.closest('#staffSeg button[data-staff]');
+    if (sf) {
+      staffFilter = sf.getAttribute('data-staff');
+      try { localStorage.setItem(STAFF_KEY, staffFilter); } catch (_) {}
+      render();
+      return;
+    }
     // 회의록 트리: 펼치기·접기, 대화/전체, 그 날짜 저장
     var tr = e.target.closest('.t-row[data-node]');
     if (tr) {
