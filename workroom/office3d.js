@@ -1037,23 +1037,26 @@
 
         // 아래쪽: 엘리베이터실 + 대표실 · 휴게실 · 수면실. 네 방은 벽과 문이 있고, 문 앞으로 로비 길(laneZ)이 지난다.
         var rz0 = zL + LANE_D, rz1 = lobby.z1;
-        // 엘리베이터실: 왼쪽 아래 네모 방. 엘리베이터는 왼쪽 벽에 있고, 오가는 사람은 위쪽 문으로 로비 길에 드나든다.
-        var eD = clamp(SPINE, 2.8, 3.6), ez = rz0 + eD / 2;
-        var elevR = lowerRoom(0, SPINE, '엘리베이터', M.elevFloor, '#8a94a6', rz0 + eD, true);
-        box(0.3, 2.6, 2.2, M.cap, 0.15, 1.3, ez);
-        box(0.02, 2.1, 1.2, M.dark, 0.31, 1.05, ez);   // 문이 열리면 보이는 칸 안
-        box(0.03, 0.14, 0.5, M.led, 0.33, 2.38, ez);
-        // 문 두 짝은 사람이 타고 내릴 때 옆으로 열린다 (frame)
-        W.elevDoor = { z: ez, open: 0, doors: [-1, 1].map(function (s) { return mesh(G.box, M.metal, 0.04, 2.1, 0.6, 0.34, 1.05, ez + s * 0.31, dyn); }) };
-        W.elev = { key: 'elev', place: elevR.place(ez), x: 0.95, ax: 0.95, z: ez, yaw: -Math.PI / 2, pose: 'stand' };
-        plant(SPINE - 0.45, rz0 + eD - 0.45, 0.8);
+        // 엘리베이터실: 왼쪽 아래 네모 방. 엘리베이터는 방 안 왼쪽의 네모난 승강로이고, 오가는 사람은 오른쪽 위 문으로 로비 길에 드나든다.
+        var eD = clamp(SPINE, 2.8, 3.6), ez = rz0 + eD / 2, es = clamp(SPINE * 0.6, 1.7, 2.0), ex = 0.05 + es;   // 승강로 한 변, 문 낸 면 x
+        var elevR = lowerRoom(0, SPINE, '엘리베이터', M.elevFloor, '#8a94a6', rz0 + eD, true, SPINE - 0.8);
+        box(es, 2.9, es, M.cap, 0.05 + es / 2, 1.45, ez);                          // 승강로
+        box(es + 0.06, 0.08, es + 0.06, M.mullion, 0.05 + es / 2, 2.94, ez);    // 위 테두리
+        box(0.02, 2.1, 0.9, M.dark, ex + 0.005, 1.05, ez);                        // 문이 열리면 보이는 칸 안
+        [-1, 1].forEach(function (s) { box(0.05, 2.2, es / 2 - 0.45, M.mullion, ex + 0.035, 1.1, ez + s * (es / 2 + 0.45) / 2); });   // 문 옆 기둥 (열린 문이 뒤로 숨는다)
+        box(0.05, 0.7, es, M.mullion, ex + 0.035, 2.55, ez);                       // 문 위
+        box(0.03, 0.12, 0.4, M.led, ex + 0.07, 2.4, ez);
+        // 문 두 짝은 사람이 타고 내릴 때 옆 기둥 뒤로 열린다 (frame)
+        W.elevDoor = { z: ez, half: 0.225, slide: 0.42, open: 0, doors: [-1, 1].map(function (s) { return mesh(G.box, M.metal, 0.03, 2.1, 0.45, ex + 0.015, 1.05, ez + s * 0.225, dyn); }) };
+        W.elev = { key: 'elev', place: elevR.place(ez), x: ex + 0.45, ax: ex + 0.45, z: ez, yaw: -Math.PI / 2, pose: 'stand' };
+        plant(SPINE - 0.4, rz0 + eD - 0.4, 0.7);
         plant(spineX(), rz1 - 0.6, 1.2);
 
         var avail = maxX - SPINE, xA = SPINE, xB = xA + avail * 0.36, xC = xB + avail * 0.37, xD = maxX;
         // 벽(아래 벽돌, 위 유리)과 위쪽 문이 있는 방 하나. 카메라 쪽(아래) 벽은 유리만 둔다.
-        // zEnd: 카메라 쪽 유리벽 z (없으면 로비 끝까지), shared: 오른쪽 벽은 옆 방 벽을 같이 쓴다
-        function lowerRoom(x0, x1, name, floorMat, accent, zEnd, shared) {
-          var z1 = zEnd || rz1, doorX = x0 + 1.3, Rm = { name: name, x0: x0, x1: x1, z0: rz0, z1: z1, doorX: doorX };
+        // zEnd: 카메라 쪽 유리벽 z (없으면 로비 끝까지), shared: 오른쪽 벽은 옆 방 벽을 같이 쓴다, doorAt: 문 가운데 x
+        function lowerRoom(x0, x1, name, floorMat, accent, zEnd, shared, doorAt) {
+          var z1 = zEnd || rz1, doorX = doorAt != null ? doorAt : x0 + 1.3, Rm = { name: name, x0: x0, x1: x1, z0: rz0, z1: z1, doorX: doorX };
           box(x1 - x0 - WALL_T, 0.012, z1 - rz0 - WALL_T, floorMat, (x0 + x1) / 2, 0.007, (rz0 + z1) / 2);
           wallX(x0, doorX - 0.6, rz0);
           wallX(doorX + 0.6, x1, rz0);
@@ -2872,7 +2875,8 @@
       var GRAV = 13, BODY_C = 0.8;   // 중력, 발에서 몸 가운데까지
       function launch(a, vel) {
         var v = vel || { x: 0, z: 0 }, sp = Math.hypot(v.x, v.z), o = a.obj.position;
-        a.fly = { ph: 'air', x: o.x, y: o.y + BODY_C, z: o.z, vx: v.x, vy: sp ? 2.5 + sp * 0.28 : 0.5, vz: v.z, rx: 0, rz: a.obj.rotation.z, spin: sp ? 5 + sp * 0.5 : 0, bounce: 0, t0: Date.now() };
+        var hand = !sp && outside(a.pos.x, a.pos.z);   // 밖에 그냥 놓으면 손 아래로 바로 떨어진다 (매달린 몸이 아직 안쪽에 있어도)
+        a.fly = { ph: 'air', x: hand ? a.pos.x : o.x, y: o.y + BODY_C, z: hand ? a.pos.z : o.z, vx: v.x, vy: sp ? 2.5 + sp * 0.28 : 0.5, vz: v.z, rx: 0, rz: a.obj.rotation.z, spin: sp ? 5 + sp * 0.5 : 0, bounce: 0, t0: Date.now() };
         a.obj.rotation.order = 'YXZ';   // 날아가는 쪽으로 앞구르기
         a.obj.rotation.x = 0;
         if (sp) a.yaw = Math.atan2(v.x, v.z);
@@ -3448,8 +3452,8 @@
             if (Math.abs(eo.pos.x - W.elev.x) < 1.1 && Math.abs(eo.pos.z - W.elev.z) < 1.0 && (eo.fadeDir || eo.moving)) { want = 1; break; }
           }
           E.open += (want - E.open) * Math.min(1, dt * 5);
-          E.doors[0].position.z = E.z - 0.31 - E.open * 0.52;
-          E.doors[1].position.z = E.z + 0.31 + E.open * 0.52;
+          E.doors[0].position.z = E.z - E.half - E.open * E.slide;
+          E.doors[1].position.z = E.z + E.half + E.open * E.slide;
         }
         var dirX = Math.sin(view.az), dirZ = Math.cos(view.az);
         W.cut.forEach(function (c) { c.obj.visible = dirX * c.nx + dirZ * c.nz <= 0.25; });
