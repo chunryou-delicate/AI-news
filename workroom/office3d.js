@@ -379,7 +379,7 @@
       var backBtn = document.createElement('button');
       backBtn.type = 'button';
       backBtn.className = 'rv-back o3-back';
-      backBtn.textContent = '← 전체 보기';
+      backBtn.textContent = '← 방 나가기';
       backBtn.hidden = true;
       container.appendChild(backBtn);
       var hint = document.createElement('div');

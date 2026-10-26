@@ -284,6 +284,11 @@
   .room-view svg .bubble { display: none; }
   .rv-back { position: absolute; left: 10px; top: 10px; z-index: 4; border: 0; border-radius: 999px; padding: 6px 12px; background: rgba(20, 24, 30, .74); color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; }
   .rv-back:hover { background: rgba(20, 24, 30, .9); }
+  @media (pointer: coarse) { .rv-back { padding: 9px 15px; font-size: 14px; } }
+  /* 방 패널 맨 위: 방 이름과 나가기 (컴퓨터는 Esc, 폰은 뒤로 가기로도 나온다) */
+  .room-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .room-bar b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  .room-exit { flex: none; border: 0; border-radius: 999px; padding: 7px 14px; background: var(--ink); color: var(--panel); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
   .rv-door { position: absolute; z-index: 3; cursor: pointer; }
   .rv-door:hover::after { content: "복도로 나가기"; position: absolute; left: 50%; top: -4px; transform: translate(-50%, -100%); background: rgba(20, 24, 30, .85); color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
   /* 회의실 안 말풍선: 건너편 줄은 머리 위로, 이쪽 줄은 의자 아래로. 평소 9줄, 마우스를 올리면 넓어지고 전부(넘치면 스크롤) */
@@ -690,6 +695,7 @@
         </section>
       </div>
       <div class="side" id="sideRoom" hidden>
+        <div class="room-bar"><b id="roomBarName"></b><button type="button" class="room-exit" id="roomExit">← 방 나가기</button></div>
         <section class="card">
           <h2><button type="button" class="fold-h" data-fold="card:roomstaff" aria-expanded="true">이 방 직원 <span class="n" id="roomStaffN"></span></button><button type="button" class="hire-btn" id="hireBtn" aria-expanded="false" hidden>+ 사람 고용</button></h2>
           <form class="send-box hire-box" id="hireBox" hidden>
@@ -1829,13 +1835,32 @@
       roomView.innerHTML = '<div class="rv-scene" style="width:' + n(roomViewWidth(stage.clientWidth)) + 'px">' + scene +
         '<div class="bubbles" id="bubbles"></div>' +
         '<div class="speech-card" id="speechCard" role="dialog" aria-label="최근에 한 말" hidden></div>' +
-        '<button type="button" class="rv-back" id="rvBack">← 복도로</button></div>';
+        '<button type="button" class="rv-back" id="rvBack">← 방 나가기</button></div>';
       lastBubbleKey = '';
       if (!roomView.hidden) stage.style.height = roomView.offsetHeight + 'px';
     }
     roomView.classList.toggle('compact', roomViewWidth(stage.clientWidth) < 640);
     renderBubbles(room, list, mt, now);
   }
+
+  // 방 주소(#room=방이름)는 브라우저 기록에 한 칸 쌓는다: 폰의 '뒤로'가 컴퓨터 Esc 처럼 방에서 나오게.
+  // 나올 때 그 칸을 걷어 낸다 (history.back → popstate 는 이미 나와 있어서 아무것도 안 함).
+  function markRoomUrl(name) {
+    var url = '#room=' + encodeURIComponent(name);
+    try {
+      if (history.state && history.state.wrRoom) history.replaceState({ wrRoom: name }, '', url);
+      else history.pushState({ wrRoom: name }, '', url);
+    } catch (_) {}
+  }
+  function clearRoomUrl() {
+    try {
+      if (history.state && history.state.wrRoom) history.back();
+      else history.replaceState(null, '', location.pathname + location.search);
+    } catch (_) {}
+  }
+  window.addEventListener('popstate', function () {
+    if (zoomRoom && !/^#room=/.test(location.hash)) exitRoom();
+  });
 
   function enterRoom(name) {
     if (zoomRoom || !data) return;
@@ -1844,7 +1869,7 @@
       // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
       if (!roomsView().some(function (r) { return r.name === name; })) return;
       zoomRoom = name; logData = null; lastMinKey = ''; expanded = {}; cardSid = null;
-      try { history.replaceState(null, '', '#room=' + encodeURIComponent(name)); } catch (_) {}
+      markRoomUrl(name);
       renderSide();
       loadRoomLog();
       render3d(Date.now());
@@ -1853,7 +1878,7 @@
     var cell = office.querySelector('.room-cell[data-room="' + CSS.escape(name) + '"]');
     if (!cell) return;
     zoomRoom = name; logData = null; lastRoomScene = ''; lastBubbleKey = ''; lastMinKey = ''; expanded = {};
-    try { history.replaceState(null, '', '#room=' + encodeURIComponent(name)); } catch (_) {}
+    markRoomUrl(name);
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var st = stage.getBoundingClientRect(), r = cell.getBoundingClientRect();
     var tw = roomViewWidth(st.width), tl = (st.width - tw) / 2;
@@ -1880,7 +1905,7 @@
     var name = zoomRoom;
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     zoomRoom = null; logData = null; cardSid = null;
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    clearRoomUrl();
     stage.classList.remove('zoomed');
     roomView.classList.remove('show');
     stage.style.height = office.offsetHeight + 'px';
@@ -1929,6 +1954,7 @@
     if (!zoomRoom) { loadOpenDays(); renderTree(); return; }
     renderRoomStaff();
     document.getElementById('minRoom').textContent = zoomRoom;
+    document.getElementById('roomBarName').textContent = zoomRoom;
     var mt = roomMeeting(zoomRoom);
     document.getElementById('minSub').textContent = mt
       ? '안건 ' + mt.agenda + ' · ' + roundPhase(mt) + (mt.waitingForUser ? ' · 의장 의견 대기' : '')
@@ -2489,16 +2515,17 @@
     if (dim === '3d' && o3 && data) o3.update(scene3d(now));
   }
   var host3d = {
-    room: function (name) { if (zoomRoom === name) return; if (zoomRoom) leaveRoomNow(); enterRoom(name); },
+    // 다른 방으로 바로 옮길 때는 주소 기록 칸을 그대로 두고 방 이름만 바꾼다
+    room: function (name) { if (zoomRoom === name) return; if (zoomRoom) leaveRoomNow(true); enterRoom(name); },
     person: function (id) { openSheet(id); },
     speech: function (id) { cardSid = id; lastCardKey = ''; renderSpeechCard(); },
     back: function () { exitRoom(); }
   };
   // 애니메이션 없이 바로 회의실에서 나온다 (2D/3D 바꿀 때, 3D 에서 나갈 때).
-  function leaveRoomNow() {
+  function leaveRoomNow(keepUrl) {
     if (!zoomRoom) return;
     zoomRoom = null; logData = null; cardSid = null;
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    if (!keepUrl) clearRoomUrl();
     stage.classList.remove('zoomed');
     roomView.classList.remove('show');
     roomView.hidden = true;
@@ -2636,7 +2663,7 @@
     var db = e.target.closest('#dimSeg button');
     if (db) { setDim(db.getAttribute('data-dim')); return; }
     if (e.target.closest('.sheet')) return;
-    if (e.target.closest('#rvBack') || e.target.closest('.rv-door')) { exitRoom(); return; }
+    if (e.target.closest('#rvBack') || e.target.closest('#roomExit') || e.target.closest('.rv-door')) { exitRoom(); return; }
     if (e.target.closest('.sc-close')) { cardSid = null; renderSpeechCard(); return; }
     var bub = e.target.closest('.sb');
     if (bub) { cardSid = bub.getAttribute('data-id'); lastCardKey = ''; renderSpeechCard(); return; }
@@ -2795,7 +2822,10 @@
       if (!hashChecked && data) {
         hashChecked = true;
         var m = location.hash.match(/^#room=(.+)$/);
-        if (m) enterRoom(decodeURIComponent(m[1]));
+        if (m) {
+          try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+          enterRoom(decodeURIComponent(m[1]));
+        }
       }
     };
     el.onerror = function () {
