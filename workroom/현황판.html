@@ -497,9 +497,35 @@
   .s-sub { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .staff-row.calm .s-name { color: var(--muted); }
   .p-empty { padding: 3px 6px 6px 22px; font-size: 11.5px; color: var(--muted); }
-  /* 방 안: 방 카드(이 방 직원·회의록)가 위, 그 아래에 확인할 일·직원 (회의록 트리·범례는 숨김) */
+  /* 방 안: 방 카드(방 나가기 줄·이 방 직원·이 방 회의록)가 같은 탭의 다른 카드보다 위 (범례는 숨김) */
   #sideRoom { order: -1; }
-  #sideDefault.in-room .tree-card, #sideDefault.in-room .legend-card { display: none; }
+  #sideDefault.in-room .legend-card { display: none; }
+  /* 패널 메뉴(탭): 고른 탭의 카드만 보이고, 같은 탭을 다시 누르면 접힌다 */
+  .dock { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); position: sticky; top: 0; z-index: 8; }
+  .dock-tab { flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); padding: 8px 4px; font: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .dock-tab:hover { background: var(--panel-2); color: var(--ink); }
+  .dock-tab.on { background: var(--ink); color: var(--panel); }
+  .dock-tab b { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--panel-2); color: var(--ink); font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+  .dock-tab b:empty { display: none; }
+  .dock-tab b.hot { background: var(--approval); color: #fff; }
+  .dock-tab.on b:not(.hot) { background: rgba(255, 255, 255, .22); color: inherit; }
+  .dock-pos { flex: none; width: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .dock-pos:hover { background: var(--panel-2); color: var(--ink); }
+  aside[data-tab="todo"] [data-pane]:not([data-pane="todo"]),
+  aside[data-tab="staff"] [data-pane]:not([data-pane="staff"]),
+  aside[data-tab="minutes"] [data-pane]:not([data-pane="minutes"]) { display: none; }
+  aside.folded .dock-body { display: none; }
+  .mini-btn { flex: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 6px; padding: 1px 8px; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+  .mini-btn:hover { color: var(--ink); border-color: var(--muted); }
+  /* 메뉴를 화면 아래로: 떠 있는 막대 + 그 위로 열리는 패널 (사무실은 화면 폭을 다 쓴다) */
+  body.dock-bottom { padding-bottom: 78px; }
+  body.dock-bottom .layout { grid-template-columns: minmax(0, 1fr); }
+  body.dock-bottom .layout > aside { display: block; order: 0; }
+  body.dock-bottom .side-grip, body.dock-bottom .o3-jump, body.dock-bottom #layoutSeg [data-lay="side"], body.dock-bottom #layoutSeg [data-lay="hide"] { display: none; }
+  body.dock-bottom .dock { position: fixed; top: auto; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(560px, calc(100% - 16px)); margin: 0; z-index: 31; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
+  body.dock-bottom .dock-body { position: fixed; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 60px); transform: translateX(-50%); width: min(560px, calc(100% - 16px)); max-height: min(68vh, 760px); overflow: auto; overscroll-behavior: contain; z-index: 30; padding: 8px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
+  body.dock-bottom .min-list, body.dock-bottom .t-day .min-list { max-height: 50vh; }
+  @media (pointer: coarse) { body.dock-bottom .office3d { height: 58vh; } }   /* 폰: 3D 도구 막대가 아래 메뉴에 가리지 않게 */
   .hire-btn { flex: none; border: 0; background: var(--done); color: #fff; border-radius: 8px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
   .hire-btn[aria-expanded="true"] { background: var(--ink); color: var(--panel); }
   .hire-box { margin: 8px 8px 2px; }
@@ -674,29 +700,37 @@
     </main>
     <aside class="side">
       <div class="side-grip" id="sideGrip" title="끌어서 패널 폭 바꾸기" role="separator" aria-orientation="vertical"></div>
+      <!-- 패널 메뉴: 탭을 누르면 그 카드만, 같은 탭을 다시 누르면 접힘. ⤓/⤒ 로 메뉴를 화면 아래(떠 있는 막대)·패널 위로 옮긴다 -->
+      <nav class="dock" id="dock" aria-label="패널 메뉴" role="tablist">
+        <button type="button" class="dock-tab" data-tab="todo" role="tab">확인할 일<b id="dockTodoN"></b></button>
+        <button type="button" class="dock-tab" data-tab="staff" role="tab">직원<b id="dockStaffN"></b></button>
+        <button type="button" class="dock-tab" data-tab="minutes" role="tab">회의록<b id="dockMinN"></b></button>
+        <button type="button" class="dock-pos" id="dockPos"></button>
+      </nav>
+      <div class="side dock-body" id="dockBody">
       <div class="side" id="sideDefault">
-        <section class="card">
+        <section class="card" data-pane="todo">
           <h2><button type="button" class="fold-h" data-fold="card:todo" aria-expanded="true">확인할 일 <span class="n" id="todoN"></span></button></h2>
           <div class="todo-bar" id="todoBar"></div>
           <ul class="list" id="todo"></ul>
         </section>
-        <section class="card">
+        <section class="card" data-pane="staff">
           <h2><button type="button" class="fold-h" data-fold="card:staff" aria-expanded="true">직원 <span class="n" id="staffN"></span></button></h2>
           <div class="staff-seg" id="staffSeg" role="group" aria-label="직원 보기"></div>
           <ul class="staff" id="staff"></ul>
         </section>
-        <section class="card tree-card">
-          <h2><button type="button" class="fold-h" data-fold="card:tree" aria-expanded="true">회의록 <span class="n" id="treeN"></span></button></h2>
+        <section class="card tree-card" data-pane="minutes">
+          <h2><button type="button" class="fold-h" data-fold="card:tree" aria-expanded="true">회의록 <span class="n" id="treeN"></span></button><button type="button" class="mini-btn" id="treeCollapse" title="펼친 층·방·날짜를 모두 접기">모두 접기</button></h2>
           <ul class="min-tree" id="minTree"></ul>
         </section>
-        <section class="card legend-card">
+        <section class="card legend-card" data-pane="staff">
           <div class="legend" id="legend"></div>
           <p class="hint" id="legendHint"></p>
         </section>
       </div>
       <div class="side" id="sideRoom" hidden>
         <div class="room-bar"><b id="roomBarName"></b><button type="button" class="room-exit" id="roomExit">← 방 나가기</button></div>
-        <section class="card">
+        <section class="card" data-pane="staff">
           <h2><button type="button" class="fold-h" data-fold="card:roomstaff" aria-expanded="true">이 방 직원 <span class="n" id="roomStaffN"></span></button><button type="button" class="hire-btn" id="hireBtn" aria-expanded="false" hidden>+ 사람 고용</button></h2>
           <form class="send-box hire-box" id="hireBox" hidden>
             <label for="hireName">새 직원 이름</label>
@@ -705,7 +739,7 @@
           </form>
           <ul class="staff room-staff" id="roomStaff"></ul>
         </section>
-        <section class="card minutes">
+        <section class="card minutes" data-pane="minutes">
           <h2>회의록 <span class="n" id="minRoom"></span></h2>
           <p class="min-sub" id="minSub"></p>
           <div class="min-tools">
@@ -717,6 +751,7 @@
           <ol class="min-list" id="minList" aria-live="polite"></ol>
           <p class="hint" id="minPath"></p>
         </section>
+      </div>
       </div>
     </aside>
   </div>
@@ -1645,6 +1680,9 @@
     var todoCount = Object.keys(cats).reduce(function (n, c) { return n + cats[c].length; }, 0);
     jumpCount = todoCount;
     setJumpCount();
+    var dockN = document.getElementById('dockTodoN');
+    dockN.textContent = todoCount ? String(todoCount) : '';
+    dockN.classList.toggle('hot', waiting > 0);
     var html = '', shownN = 0;
     todoKeys = {};
     Object.keys(CAT).sort(function (a, b) { return CAT[a].order - CAT[b].order; }).forEach(function (c) {
@@ -1864,6 +1902,8 @@
 
   function enterRoom(name) {
     if (zoomRoom || !data) return;
+    // 패널이 열려 있으면 회의록 탭으로 (이 방 회의록이 맨 위에 온다)
+    if (!dock.folded && dock.tab !== 'minutes') { dock.tab = 'minutes'; applyDock(true); }
     openTreeForRoom(name);
     if (dim === '3d') {
       // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
@@ -2210,6 +2250,7 @@
     staffFilter = save;
     var working = people.filter(function (s) { return s.state === 'working'; }).length;
     document.getElementById('staffN').textContent = people.length ? people.length + '명' + (working ? ' · 일하는 중 ' + working : '') : '';
+    document.getElementById('dockStaffN').textContent = people.length ? String(people.length) : '';
 
     // 층은 이 컴퓨터가 먼저, 파트는 방 순서대로. 방 목록에 없는 방의 세션은 그 층 끝에 파트를 붙인다.
     var floors = [], fBy = {};
@@ -2606,11 +2647,12 @@
       var cc = chip.getAttribute('data-cat');
       todoFilter = todoFilter === cc ? '' : cc;
       render();
-      // 폰처럼 패널이 아래에 있으면 거른 목록이 보이게 내려간다
-      if (todoFilter && sideBelow() && !zoomRoom) scrollToSide(document.getElementById('todo').closest('.card'));
+      // 확인할 일 탭을 열고, 폰처럼 패널이 아래에 깔려 있으면(메뉴 위) 거른 목록이 보이게 내려간다
+      if (todoFilter) openTab('todo');
+      if (todoFilter && dock.pos === 'top' && sideBelow()) scrollToSide(document.getElementById('todo').closest('.card'));
       return;
     }
-    if (e.target.closest('#o3Jump')) { scrollToSide(); return; }
+    if (e.target.closest('#o3Jump')) { if (dock.folded) { dock.folded = false; applyDock(true); } scrollToSide(); return; }
     // 확인할 일: 카드 '확인'/'되살리기', 갈래 '모두 확인'/'모두 되살리기', '확인한 것 보기'
     var ab = e.target.closest('.ack[data-ack]');
     if (ab) { var ak = ab.getAttribute('data-ack'); if (acked[ak]) delete acked[ak]; else acked[ak] = Date.now(); saveAcked(); render(); return; }
@@ -2697,6 +2739,7 @@
     if (e.key === 'Escape') {
       if (document.getElementById('scrim').classList.contains('open')) closeSheet();
       else if (cardSid) { cardSid = null; renderSpeechCard(); }
+      else if (dock.pos === 'bottom' && !dock.folded) { dock.folded = true; applyDock(true); }   // 아래 메뉴로 열린 패널부터 닫는다
       else if (zoomRoom) exitRoom();
       return;
     }
@@ -2734,6 +2777,52 @@
     }
   }
   applyLayout(false);
+
+  // ---------- 패널 메뉴: 확인할 일 · 직원 · 회의록 탭 ----------
+  // 탭을 누르면 그 카드만, 같은 탭을 다시 누르면 접힌다. 메뉴 위치: 위(패널 맨 위, 내려도 붙어 있음) / 아래(화면 아래 떠 있는 막대,
+  // 패널은 그 위로 열림 · 사무실은 화면 폭을 다 씀). 처음엔 좁은 화면(폰)이 아래·접힘, 넓은 화면이 위. 브라우저마다 기억한다.
+  var DOCK_KEY = 'workroom-dock';
+  var dock = { tab: 'todo', folded: false, pos: '' };
+  try { Object.assign(dock, JSON.parse(localStorage.getItem(DOCK_KEY) || '{}')); } catch (_) {}
+  if (!dock.pos) { dock.pos = window.matchMedia('(max-width: 1100px)').matches ? 'bottom' : 'top'; dock.folded = dock.pos === 'bottom'; }
+  if (['todo', 'staff', 'minutes'].indexOf(dock.tab) < 0) dock.tab = 'todo';
+  function applyDock(save) {
+    var aside = document.querySelector('aside.side');
+    aside.setAttribute('data-tab', dock.tab);
+    aside.classList.toggle('folded', !!dock.folded);
+    document.body.classList.toggle('dock-bottom', dock.pos === 'bottom');
+    document.querySelectorAll('#dock .dock-tab').forEach(function (b) {
+      var on = !dock.folded && b.getAttribute('data-tab') === dock.tab;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', String(on));
+      b.title = on ? '다시 누르면 접혀요' : '';
+    });
+    var p = document.getElementById('dockPos');
+    p.textContent = dock.pos === 'bottom' ? '⤒' : '⤓';
+    p.title = dock.pos === 'bottom' ? '메뉴를 패널 맨 위로 옮기기' : '메뉴를 화면 아래 막대로 옮기기';
+    if (save) {
+      try { localStorage.setItem(DOCK_KEY, JSON.stringify(dock)); } catch (_) {}
+      window.dispatchEvent(new Event('resize'));
+    }
+  }
+  function openTab(tab) { dock.tab = tab; dock.folded = false; applyDock(true); }
+  applyDock(false);
+  document.getElementById('dock').addEventListener('click', function (e) {
+    var b = e.target.closest('.dock-tab');
+    if (b) {
+      var tab = b.getAttribute('data-tab');
+      if (tab === dock.tab && !dock.folded) { dock.folded = true; applyDock(true); }
+      else openTab(tab);
+      return;
+    }
+    if (e.target.closest('#dockPos')) { dock.pos = dock.pos === 'bottom' ? 'top' : 'bottom'; applyDock(true); }
+  });
+  document.getElementById('treeCollapse').addEventListener('click', function () {
+    treeOpen = {};
+    saveTreeOpen();
+    lastTreeKey = '';
+    renderTree();
+  });
   document.getElementById('layoutSeg').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-lay]');
     if (!b) return;
