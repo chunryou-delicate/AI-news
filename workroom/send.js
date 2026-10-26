@@ -166,7 +166,7 @@ function pendingOutbox() {
 function applyReceipt(rc, fromMachine) {
   const file = path.join(OUTBOX, `${rc.id}.json`);
   if (!fs.existsSync(file)) return;
-  logUpdate(rc.id, rc.ok ? { status: 'delivered', doneAt: rc.at || Date.now() } : { status: 'failed', error: rc.error || `${fromMachine} 에서 넣지 못했어요`, doneAt: rc.at || Date.now() });
+  logUpdate(rc.id, rc.ok ? { status: 'delivered', doneAt: rc.at || Date.now(), merged: rc.merged || 0 } : { status: 'failed', error: rc.error || `${fromMachine} 에서 넣지 못했어요`, doneAt: rc.at || Date.now() });
   try { fs.unlinkSync(file); } catch (_) {}
 }
 

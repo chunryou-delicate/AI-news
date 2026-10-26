@@ -3157,7 +3157,9 @@
       var list = (j.list || []).slice(-3).reverse();
       document.getElementById('sendList').innerHTML = list.map(function (e) {
         var st = SEND_STATUS[e.status] || SEND_STATUS.queued;
-        return '<li class="' + st[0] + '" title="' + esc(e.error || '') + '"><b>' + hm(e.at) + ' ' + st[1] + '</b><span>' + esc(e.error ? e.text + ' — ' + e.error : e.text) + '</span></li>';
+        // 다른 컴퓨터가 동기화 사이에 밀린 지시를 하나로 합쳐 넣었으면 '합쳐서 들어감'
+        var label = e.status === 'delivered' && e.merged > 1 ? '합쳐서 들어감' : st[1];
+        return '<li class="' + st[0] + '" title="' + esc(e.error || '') + '"><b>' + hm(e.at) + ' ' + label + '</b><span>' + esc(e.error ? e.text + ' — ' + e.error : e.text) + '</span></li>';
       }).join('');
       // 다른 컴퓨터로 보낸 것이 아직 대기면 조금 뒤 다시 본다
       if (list.some(function (e) { return e.status === 'queued'; })) sendPoll = setTimeout(function () { loadSends(id); }, 6000);

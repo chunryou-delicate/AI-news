@@ -160,7 +160,7 @@ function handleSend(cfg, req, res, headers, pathname, u) {
     const sendMod = require('./send.js');
     const sid = u.searchParams.get('sid');
     const list = sendMod.readLog().filter((e) => !sid || e.sid === sid).slice(-20).map((e) => ({
-      id: e.id, at: e.at, sid: e.sid, text: e.text, status: e.status, error: e.error || '', toMachine: e.toMachine || '', doneAt: e.doneAt || 0,
+      id: e.id, at: e.at, sid: e.sid, text: e.text, status: e.status, error: e.error || '', toMachine: e.toMachine || '', doneAt: e.doneAt || 0, merged: e.merged || 0,
     }));
     sendJson(res, headers, 200, { ok: true, list });
     return;

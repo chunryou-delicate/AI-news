@@ -212,6 +212,21 @@ function pullOthers(cfg, interactive) {
   return pulled;
 }
 
+// 같은 세션에 밀린 지시를 이어 붙인다: 앞의 것 + ' (추가 지시) ' + 뒤의 것. 똑같은 말은 한 번만, 한 번에 넣을 수 있는 길이(1000자)를 넘으면 나눈다.
+function mergeSends(items) {
+  const parts = [];
+  let cur = null;
+  const seen = new Set();
+  for (const m of items) {
+    const t = sendMod.cleanText(m.text);
+    if (seen.has(t)) { if (cur) cur.items.push(m); else parts.push(cur = { text: t, items: [m] }); continue; }
+    seen.add(t);
+    if (cur && (cur.text + ' (추가 지시) ' + t).length <= 1000) { cur.text += ' (추가 지시) ' + t; cur.items.push(m); }
+    else parts.push(cur = { text: t, items: [m] });
+  }
+  return parts;
+}
+
 // 다른 컴퓨터 브랜치에서: 이 컴퓨터로 온 지시를 넣고(두 시간 안에 보낸 것만, 한 번씩), 이 컴퓨터가 보낸 지시의 받음 표시를 확인한다.
 function receiveSends(cfg, own, ref, meta) {
   const list = (prefix) => {
@@ -220,17 +235,42 @@ function receiveSends(cfg, own, ref, meta) {
   const done = readJson(INBOX_DONE, {});
   let changed = false, closedAny = false;
   if (own) {
+    // 아직 넣지 않은 것을 보낸 순서대로 모으고, 같은 세션에 온 지시는 하나로 합쳐 한 번에 넣는다
+    // (동기화 사이에 여러 번 보냈으면 앞서 것에 더해서 들어가게. 똑같은 말은 한 번만). 고용·닫기는 하나씩.
+    const fresh = [];
     for (const f of list(`send/${own}/`)) {
       let m;
       try { m = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
-      if (!m || !m.id || done[m.id]) continue;
-      let r;
-      if (cfg.acceptSend === false) r = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
-      else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) r = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
-      else r = sendMod.deliverInbound(m);
-      if (r.ok && m.kind === 'close') closedAny = true;
-      done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid };
-      changed = true;
+      if (m && m.id && !done[m.id]) fresh.push(m);
+    }
+    fresh.sort((a, b) => (a.at || 0) - (b.at || 0));
+    const groups = [];
+    for (const m of fresh) {
+      const isSend = !m.kind || m.kind === 'send';
+      const g = isSend ? groups.find((x) => x.send && x.sid === m.sid) : null;
+      if (g) g.items.push(m); else groups.push({ sid: m.sid, send: isSend, items: [m] });
+    }
+    for (const g of groups) {
+      const res = {}, ok = [];
+      for (const m of g.items) {
+        if (cfg.acceptSend === false) res[m.id] = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
+        else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) res[m.id] = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
+        else ok.push(m);
+      }
+      if (g.send && ok.length > 1) {
+        for (const part of mergeSends(ok)) {
+          const r = sendMod.deliverInbound(Object.assign({}, part.items[0], { text: part.text }));
+          for (const m of part.items) res[m.id] = Object.assign({}, r, { merged: part.items.length });
+        }
+      } else {
+        for (const m of ok) res[m.id] = sendMod.deliverInbound(m);
+      }
+      for (const m of g.items) {
+        const r = res[m.id];
+        if (r.ok && m.kind === 'close') closedAny = true;
+        done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid, merged: r.merged || 0 };
+        changed = true;
+      }
     }
   }
   for (const f of list('receipts/')) {
