@@ -971,15 +971,18 @@ function readRegistry() {
     if (!/^\d+\.json$/.test(name)) continue;
     const r = readJson(path.join(REGISTRY_DIR, name), null);
     if (!r || !r.sessionId) continue;
+    // 같은 세션을 다시 켜면(--continue/--resume) 꺼진 프로세스의 기록이 잠깐 남을 수 있다 → 살아 있는 쪽, 같으면 나중에 시작한 쪽
+    const prev = map.get(r.sessionId), alive = isAlive(r.pid), started = Number(r.startedAt) || 0;
+    if (prev && (prev.alive && !alive || (prev.alive === alive && prev.startedAt >= started))) continue;
     map.set(r.sessionId, {
       pid: r.pid,
-      alive: isAlive(r.pid),
+      alive,
       cwd: r.cwd,
       name: r.name,
       nameSource: r.nameSource,
       status: r.status,
       statusUpdatedAt: Number(r.statusUpdatedAt) || 0,
-      startedAt: Number(r.startedAt) || 0,
+      startedAt: started,
       entrypoint: r.entrypoint,
     });
   }
