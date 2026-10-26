@@ -2081,7 +2081,7 @@
     if (!id || !text) return;
     btn.disabled = true;
     note.className = 'send-note';
-    note.textContent = '보내는 중…';
+    note.textContent = byId[id] && byId[id].machine ? '보내는 중…' : '터미널에 넣는 중… (Orca 가 느리면 30초 넘게 걸리기도 해요)';
     fetch('__send', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Workroom': 'send' }, body: JSON.stringify({ sid: id, text: text }) })
       .then(function (r) { return r.json(); })
       .then(function (j) {

@@ -847,6 +847,7 @@ function loadRooms() {
   }));
   const other = Object.assign({ no: '99', name: '기타' }, cfg.otherRoom || {});
   // auto: 방 목록을 따로 정하지 않고 세션의 프로젝트 폴더(가장 바깥 git 저장소, 없으면 작업 폴더) 이름으로 방을 만든다.
+  //       rooms 를 같이 적으면 그 paths 아래 세션은 그 방이 먼저다 (하위 git 저장소를 바깥 폴더 방으로 묶을 때).
   return { rooms, other, auto: !!cfg.auto };
 }
 
@@ -866,9 +867,9 @@ function projectOf(cwd) {
 }
 
 function roomNameFor(cwd, R) {
-  if (R.auto) return projectOf(cwd) || R.other.name;
   const r = roomFor(cwd, R.rooms);
-  return r ? r.name : R.other.name;
+  if (r) return r.name;
+  return (R.auto && projectOf(cwd)) || R.other.name;
 }
 
 function roomFor(cwd, rooms) {
