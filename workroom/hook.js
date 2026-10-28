@@ -19,6 +19,8 @@ const MEETING_CACHE = path.join(ROOT, 'meetings-cache.json');
 const MEETING_LOCK = path.join(ROOT, 'meetings.lock');
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
+// Claude Code 가 살아 있는 세션마다 남기는 기록(<설정 폴더>/sessions/<pid>.json). 기본 설정 폴더는 ~/.claude 지만,
+// Orca 처럼 CLAUDE_CONFIG_DIR 로 프로필마다 설정 폴더를 따로 쓰면 기록도 그 폴더에 쌓인다 (registryDirs).
 const REGISTRY_DIR = process.env.WORKROOM_REGISTRY_DIR || path.join(CLAUDE_DIR, 'sessions');
 const SYNC_FILE = path.join(ROOT, 'sync.json');            // 다른 컴퓨터와 주고받기 설정 (sync.js)
 const SYNC_STATUS = path.join(ROOT, 'sync-status.json');
@@ -785,6 +787,7 @@ function handleEvent(input) {
   const s = prev || { id, startedAt, state: 'idle', stateSince: startedAt };
 
   if (input.cwd) s.cwd = input.cwd;
+  s.configDir = process.env.CLAUDE_CONFIG_DIR || '';   // 이 세션의 설정 폴더 (세션 기록을 어디서 찾을지)
   if (input.transcript_path) s.transcriptPath = input.transcript_path;
   if (input.permission_mode) s.permissionMode = input.permission_mode;
   // Orca 탭·터미널 ID: 회의 상태 파일(meetings/*.json)의 역할과 세션을 짝지을 때 쓴다.
@@ -966,15 +969,41 @@ function isAlive(pid) {
   try { process.kill(Number(pid), 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
 
-// Claude Code 가 실행 중인 세션마다 남기는 ~/.claude/sessions/<pid>.json 을 읽는다.
+// 세션 기록 폴더를 아는 대로 모두: ~/.claude, 지금 훅의 CLAUDE_CONFIG_DIR, 세션들이 남긴 설정 폴더, Orca 프로필들.
+// 한 군데만 보면 다른 폴더에 기록된 살아 있는 세션을 '끝남'으로 지워 버린다 (Orca 가 프로필 폴더를 새로 만들었을 때 그랬다).
+function registryDirs(extra) {
+  if (process.env.WORKROOM_REGISTRY_DIR) return [process.env.WORKROOM_REGISTRY_DIR];
+  const home = os.homedir();
+  const dirs = [REGISTRY_DIR];
+  if (process.env.CLAUDE_CONFIG_DIR) dirs.push(path.join(process.env.CLAUDE_CONFIG_DIR, 'sessions'));
+  for (const d of extra || []) if (d) dirs.push(path.join(d, 'sessions'));
+  const orcaRoot = process.platform === 'win32' ? path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'orca')
+    : process.platform === 'darwin' ? path.join(home, 'Library', 'Application Support', 'orca')
+    : path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'orca');
+  let profiles = [];
+  try { profiles = fs.readdirSync(path.join(orcaRoot, 'claude-profiles')); } catch (_) {}
+  for (const p of profiles) dirs.push(path.join(orcaRoot, 'claude-profiles', p, 'home', 'sessions'));
+  const seen = new Set();
+  return dirs.filter((d) => {
+    const k = path.resolve(d).toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+// Claude Code 가 실행 중인 세션마다 남기는 <설정 폴더>/sessions/<pid>.json 을 읽는다.
 // 공식 문서에 없는 내부 파일이라, 형식이 바뀌어도 현황판이 깨지지 않게 방어적으로 읽는다.
-function readRegistry() {
+function readRegistry(extra) {
   const map = new Map();
-  let names = [];
-  try { names = fs.readdirSync(REGISTRY_DIR); } catch (_) { return map; }
-  for (const name of names) {
-    if (!/^\d+\.json$/.test(name)) continue;
-    const r = readJson(path.join(REGISTRY_DIR, name), null);
+  const files = [];
+  for (const dir of registryDirs(extra)) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (_) { continue; }
+    for (const name of names) if (/^\d+\.json$/.test(name)) files.push(path.join(dir, name));
+  }
+  for (const file of files) {
+    const r = readJson(file, null);
     if (!r || !r.sessionId) continue;
     // 같은 세션을 다시 켜면(--continue/--resume) 꺼진 프로세스의 기록이 잠깐 남을 수 있다 → 살아 있는 쪽, 같으면 나중에 시작한 쪽
     const prev = map.get(r.sessionId), alive = isAlive(r.pid), started = Number(r.startedAt) || 0;
@@ -1083,7 +1112,16 @@ function rebuild() {
   const now = Date.now();
   const R = loadRooms();
   const { rooms, other } = R;
-  const registry = readRegistry();
+  // 세션들이 남긴 설정 폴더까지 넣어 세션 기록을 읽는다
+  const configDirs = new Set();
+  try {
+    for (const f of fs.readdirSync(SESS_DIR)) {
+      if (!f.endsWith('.json')) continue;
+      const c = (readJson(path.join(SESS_DIR, f), null) || {}).configDir;
+      if (c) configDirs.add(c);
+    }
+  } catch (_) {}
+  const registry = readRegistry([...configDirs]);
   const usage = readUsage(now);
   const cache = readJson(CACHE_FILE, {});
   let cacheDirty = false;
@@ -1093,7 +1131,7 @@ function rebuild() {
   let files = [];
   try { files = fs.readdirSync(SESS_DIR).filter((f) => f.endsWith('.json')); } catch (_) {}
 
-  // Claude Code 가 살아 있는 세션마다 남기는 기록(~/.claude/sessions)이 있으면, 거기 없는 세션은 끝난 것으로 본다
+  // Claude Code 가 살아 있는 세션마다 남기는 기록(설정 폴더마다 sessions/)이 있으면, 어디에도 없는 세션은 끝난 것으로 본다
   // (탭을 강제로 닫으면 퇴장 훅이 안 불려 '대기'·'일하는 중' 으로 12시간 남던 유령). 막 시작해 기록이 아직 없을 수 있어 2분은 기다린다.
   const registryOn = registry.size > 0;
   for (const f of files) {
