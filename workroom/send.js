@@ -66,7 +66,10 @@ function orcaBin() {
     ? [path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Programs', 'orca', 'resources', 'bin', 'orca.exe')]
     : process.platform === 'darwin'
       ? ['/Applications/Orca.app/Contents/Resources/bin/orca', path.join(home, 'Applications', 'Orca.app', 'Contents', 'Resources', 'bin', 'orca')]
-      : ['/opt/Orca/resources/bin/orca', '/usr/lib/orca/resources/bin/orca', path.join(home, '.local', 'bin', 'orca')];
+      // 리눅스: 설치판의 명령줄은 orca-ide 이고, Orca 가 터미널 PATH 앞에 끼워 주는 심(shim)은 ~/.config/orca/linux-orca-cli-shim/orca 다.
+      // PATH 의 orca 는 GNOME 화면 읽기 프로그램(스크린 리더)일 수 있어서 맨 마지막에만 쓴다 (systemd 서비스에서 돈 sync.js 가 그걸 불러 실패했다).
+      : ['/opt/Orca/resources/bin/orca-ide', '/opt/Orca/resources/bin/orca', '/usr/lib/orca/resources/bin/orca-ide', '/usr/lib/orca/resources/bin/orca',
+        path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'orca', 'linux-orca-cli-shim', 'orca'), path.join(home, '.local', 'bin', 'orca')];
   for (const c of cands) if (fs.existsSync(c)) return c;
   return 'orca';
 }
@@ -372,7 +375,7 @@ function deliverInbound(m) {
   return deliverLocal(m.sid, m.text);
 }
 
-module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, rename, renameLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey };
+module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, rename, renameLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey, orcaBin };
 
 // 명령줄 (현황판 서버는 --json 을 붙여 따로 띄운 프로세스로 부른다)
 //   node send.js [--json] <세션ID> <지시>
