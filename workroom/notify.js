@@ -18,12 +18,17 @@ const CFG_FILE = path.join(ROOT, 'notify.json');
 const STATE_FILE = path.join(ROOT, 'notify-state.json');
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const MAX_AGE = 6 * 3600 * 1000;
-const CAT = { approval: '✋ 승인 대기', question: '❓ 질문', error: '⛔ 막힘' };
+const CAT = { approval: '✋ 승인 대기', question: '❓ 질문', error: '⛔ 막힘', denied: '✋ 승인 대기 (auto mode가 막음)' };
 const QUICK = {
   approval: ['응 진행해', '아니, 하지 마'],
   question: ['알아서 판단해서 해'],
   error: ['다시 해 봐'],
+  denied: ['승인: 다시 해 줘', '그건 하지 마'],
 };
+// auto mode 가 막은 것은 무엇을 승인하는지 그대로 적어 보낸다 (현황판 qrTexts 와 같은 말)
+function deniedReplies(what) {
+  return [`박사님 승인: 방금 auto mode가 막은 「${what}」 해도 됩니다. 그대로 다시 해 주세요.`, `방금 auto mode가 막은 「${what}」는 하지 마세요. 다른 방법이 있으면 알려 주세요.`];
+}
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
@@ -74,6 +79,12 @@ function readState() {
 function pending(st) {
   const out = [];
   for (const s of (st && st.sessions) || []) {
+    const d = s.denied;
+    if (d && s.state !== 'ended' && !['approval', 'question', 'error'].includes(s.state)) {
+      out.push({ key: `${s.id}|d${d.at || 0}`, sid: s.id, cat: 'denied', since: d.at || 0, room: s.room || '', title: s.title || s.lastPrompt || '이름 없는 세션',
+        detail: `${d.what}${d.reason ? ' — ' + d.reason : ''}`, quick: deniedReplies(d.what) });
+      continue;
+    }
     const cat = ['approval', 'question', 'error'].includes(s.state) ? s.state : s.state === 'done' && (s.ask === 'approval' || s.ask === 'question') ? s.ask : '';
     if (!cat) continue;
     const detail = s.state === 'error' ? s.errorText : s.state === 'done' ? s.askText || s.lastMessage : s.waitingFor;
@@ -137,7 +148,7 @@ async function tick() {
       const r = await tg(cfg, 'sendMessage', Object.assign({ chat_id: cfg.chatId, disable_web_page_preview: true }, messageFor(it, cfg, !!prev)));
       if (!r.ok) { logError(`sendMessage: ${r.description || ''}`); break; }
       NS.sent[it.key] = { at: prev ? prev.at : now, reminded: !!prev, msgId: r.result.message_id };
-      NS.msgs[r.result.message_id] = { sid: it.sid, cat: it.cat, key: it.key, at: now };
+      NS.msgs[r.result.message_id] = Object.assign({ sid: it.sid, cat: it.cat, key: it.key, at: now }, it.quick ? { quick: it.quick } : {});
       saveNs();
     }
     // 끝난 것과 이틀 지난 답장 연결은 지운다
@@ -173,7 +184,7 @@ async function handleUpdate(cfg, ns, u) {
     const q = u.callback_query, msg = q.message || {};
     if (String(msg.chat && msg.chat.id) !== cfg.chatId) return;
     const link = ns.msgs[msg.message_id], idx = Number(String(q.data || '').replace(/^q/, ''));
-    const text = link && (QUICK[link.cat] || [])[idx];
+    const text = link && (link.quick || QUICK[link.cat] || [])[idx];
     if (!link || !text) { await tg(cfg, 'answerCallbackQuery', { callback_query_id: q.id, text: '오래된 알림이라 보낼 곳을 모르겠어요' }); return; }
     const r = sendFn ? await sendFn(link.sid, text) : { ok: false, error: '서버가 아직 준비되지 않았어요' };
     await tg(cfg, 'answerCallbackQuery', { callback_query_id: q.id, text: r.ok ? '보냈어요' : '못 보냈어요' });

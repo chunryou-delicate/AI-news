@@ -16,6 +16,7 @@ const EVENTS = [
   ['PostToolUse', '*', true],
   ['PostToolUseFailure', '*', true],
   ['PermissionRequest', '*', true],
+  ['PermissionDenied', null, true],
   ['Notification', 'permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input', true],
   ['SubagentStart', null, true],
   ['SubagentStop', null, true],

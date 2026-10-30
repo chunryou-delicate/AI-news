@@ -403,6 +403,9 @@ function collectEntries(ev, input, s, sp) {
     case 'PermissionRequest':
       out.push(Object.assign({}, base, { kind: 'state', text: '승인 요청 · ' + summarizeToolInput(input.tool_name || '', input.tool_input) }));
       break;
+    case 'PermissionDenied':
+      out.push(Object.assign({}, base, { kind: 'state', text: 'auto mode가 막음 · ' + summarizeToolInput(input.tool_name || '', input.tool_input) }));
+      break;
     case 'StopFailure':
       out.push(Object.assign({}, base, { kind: 'state', text: 'API 오류로 멈춤 · ' + clip(input.last_assistant_message || input.error || '', 120) }));
       break;
@@ -808,7 +811,7 @@ function handleEvent(input) {
   const tool = input.tool_name || '';
   switch (ev) {
     case 'SessionStart':
-      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; s.ask = ''; s.askText = ''; }
+      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; s.ask = ''; s.askText = ''; delete s.denied; }
       if (input.source !== 'compact') next = 'idle';
       if (input.model) s.model = typeof input.model === 'string' ? input.model : (input.model.display_name || input.model.id || '');
       delete s.endedAt;
@@ -819,6 +822,7 @@ function handleEvent(input) {
       if (input.prompt && !/^\s*<[a-z][\w-]*[\s>]/i.test(input.prompt) && !/^\s*You are working inside Orca/i.test(input.prompt)
         && !/^\s*You have \d+ orchestration message/i.test(input.prompt)) {
         s.lastPrompt = clip(input.prompt, 200);
+        delete s.denied;   // 사람이 답했으면 auto mode가 막은 것은 확인할 일에서 내린다
       }
       s.promptAt = startedAt;
       s.gitBase = gitHead(s.cwd) || '';
@@ -837,6 +841,11 @@ function handleEvent(input) {
       next = 'approval';
       s.tool = tool;
       s.waitingFor = summarizeToolInput(tool, input.tool_input);
+      break;
+    case 'PermissionDenied':
+      // auto mode 는 묻지 않고 바로 막아서 승인 창이 뜨지 않는다. 세션은 계속 일하므로 상태는 그대로 두고,
+      // 무엇이 왜 막혔는지 적어 두면 현황판이 승인 대기로 띄운다 (사람이 다음에 답하면 지운다).
+      s.denied = { at: startedAt, what: summarizeToolInput(tool, input.tool_input), reason: clip(input.reason || '', 160) };
       break;
     case 'Notification': {
       const type = input.notification_type || '';
@@ -1320,6 +1329,7 @@ function publicSession(s, state, quiet, reg, R, usage) {
     tool: s.tool || '',
     waitingFor: s.waitingFor || '',
     errorText: s.errorText || '',
+    denied: s.denied || null,
     subagents,
     orca: s.orca || null,
     git: s.git ? { head: s.git.head, commits: s.git.commits, files: s.git.files, ins: s.git.ins, del: s.git.del, dirty: s.git.dirty, subject: s.git.subject, at: s.git.at } : null,

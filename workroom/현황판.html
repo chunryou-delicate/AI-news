@@ -1143,8 +1143,19 @@
     error:    { label: '막힘', color: 'var(--error)', order: 2 },
     report:   { label: '완료 보고', color: 'var(--done)', order: 3 }
   };
+  // auto mode 가 묻지 않고 막은 도구 (훅이 denied 로 적는다). 세션은 계속 일하므로 상태와 따로 승인 대기로 띄운다.
+  // 사람이 그 세션에 답하면 훅이 지운다. 승인·질문·막힘 상태가 따로 있으면 그쪽이 먼저다.
+  function deniedOnly(s) {
+    if (!s.denied || s.synthetic || s.state === 'ended' || s.state === 'approval' || s.state === 'question' || s.state === 'error') return null;
+    return s.denied;
+  }
+  function deniedKey(s) { return s.id + '|d' + (s.denied.at || 0); }
+  // '확인'으로 치운 것은 말풍선·방 깜빡임에서도 뺀다
+  function deniedLive(s) { var d = deniedOnly(s); return d && !isAcked(deniedKey(s)) ? d : null; }
+  function deniedText(d) { return 'auto mode가 막음 · ' + d.what + (d.reason ? ' — ' + d.reason : ''); }
   function catOf(s) {
     if (s.state === 'approval' || s.state === 'question' || s.state === 'error') return s.state;
+    if (deniedOnly(s)) return 'approval';
     if (s.state !== 'done') return '';
     return CAT[s.ask] ? s.ask : askKind(s.lastMessage).kind;
   }
@@ -1167,7 +1178,10 @@
     try { localStorage.setItem(ACK_KEY, JSON.stringify(acked)); } catch (_) {}
   }
   // 회의 의견 대기는 의장 세션 id 로 (회의 키는 컴퓨터마다 앞에 붙는 것이 달라서)
-  function ackKey(it) { return it.m ? 'mt:' + (it.m.chairId || it.m.key) + '|' + (it.m.updatedAt || 0) : it.s.id + '|' + (it.s.stateSince || 0); }
+  function ackKey(it) {
+    if (it.m) return 'mt:' + (it.m.chairId || it.m.key) + '|' + (it.m.updatedAt || 0);
+    return it.c === 'approval' && deniedOnly(it.s) ? deniedKey(it.s) : it.s.id + '|' + (it.s.stateSince || 0);
+  }
   function isAcked(k) { return SERVER ? !!sharedAcks[k] : !!(acked[k] || sharedAcks[k]); }
   function setAck(keys, on) {
     if (!keys.length || SHARE) return;
@@ -1216,6 +1230,8 @@
   try { staffFilter = localStorage.getItem(STAFF_KEY) || 'all'; } catch (_) {}
 
   function detailLine(s) {
+    var dn = deniedLive(s);
+    if (dn) return deniedText(dn);
     if (s.state === 'approval' || s.state === 'question') return s.waitingFor || '확인이 필요해요';
     if (s.state === 'error') return s.errorText || 'API 오류로 멈췄어요';
     if (s.state === 'done') return s.lastMessage || s.lastPrompt || '';
@@ -1510,7 +1526,7 @@
 
   function roomStatus(active, people, meeting) {
     if (!active.length) return { label: '비어 있음', color: 'var(--idle)' };
-    if (active.some(function (s) { return s.state === 'approval'; })) return { label: '승인 대기', color: 'var(--approval)', blink: true };
+    if (active.some(function (s) { return s.state === 'approval' || !!deniedLive(s); })) return { label: '승인 대기', color: 'var(--approval)', blink: true };
     if (meeting && meeting.waitingForUser) return { label: '의견 대기', color: 'var(--question)', blink: true };
     if (active.some(function (s) { return s.state === 'question'; })) return { label: '답변 대기', color: 'var(--question)', blink: true };
     if (active.some(function (s) { return s.state === 'error'; })) return { label: '막힘', color: 'var(--error)' };
@@ -1757,7 +1773,7 @@
         var room = row[ci] || { no: '—', name: '자료실', label: '자료실', kind: 'storage' };
         var list = row[ci] ? (data.sessions || []).filter(function (s) { return s.room === room.name; }) : [];
         var mt = row[ci] ? meetingFor[room.name] || null : null;
-        var alert = list.some(function (s) { return s.state === 'approval' || s.state === 'question'; }) || !!(mt && mt.waitingForUser);
+        var alert = list.some(function (s) { return s.state === 'approval' || s.state === 'question' || !!deniedLive(s); }) || !!(mt && mt.waitingForUser);
         var enter = row[ci] ? ' data-room="' + esc(room.name) + '" tabindex="0" role="button" aria-label="' + esc(room.no + ' ' + room.name + ' 회의실 들어가기') + '"' : '';
         var svg = withGeo(planGeo(seatsPerRow(list, room.kind, mt)), function () { return roomSvg(room, list, room.kind, now, mt); });
         html += '<div class="room-cell' + (alert ? ' alert' : '') + (row[ci] ? '' : ' storage') + '"' + enter + ' style="grid-row:' + gr + ';grid-column:' + (c0 + ci) + '">' +
@@ -1856,7 +1872,7 @@
     // 확인할 일을 갈래별로: 승인 대기 · 질문(회의 의견 대기 포함) · 완료 보고 · 막힘
     if (!SERVER) sharedAcks = data.acks || {};   // 파일로 열면 state.js 에 실린 것 (다른 기기·컴퓨터에서 확인한 것)
     var cats = { approval: [], question: [], error: [], report: [] }, ackedItems = [];
-    sessions.forEach(function (s) { var c = catOf(s); if (c) cats[c].push({ c: c, s: s, t: s.stateSince }); });
+    sessions.forEach(function (s) { var c = catOf(s), dn = c === 'approval' && deniedOnly(s); if (c) cats[c].push({ c: c, s: s, t: dn ? dn.at : s.stateSince }); });
     meetingWaits.forEach(function (m) { cats.question.push({ c: 'question', m: m, t: m.updatedAt }); });
     // '확인'으로 치운 것은 숫자와 목록에서 뺀다 ('확인한 것 보기'로 다시 볼 수 있다)
     Object.keys(cats).forEach(function (c) {
@@ -2006,6 +2022,8 @@
     if (s.state === 'approval') return { kind: 'alert', text: '승인 기다리는 중' + (s.waitingFor ? ' · ' + s.waitingFor : '') };
     if (s.state === 'question') return { kind: 'alert', text: '답변 기다리는 중' + (s.waitingFor ? ' · ' + s.waitingFor : '') };
     if (s.state === 'error') return { kind: 'alert', text: s.errorText || 'API 오류로 멈췄어요' };
+    var dn = deniedLive(s);
+    if (dn) return { kind: 'alert', text: deniedText(dn) };
     var sayT = sp.say ? sp.say.t2 || sp.say.t : 0;
     if (sp.say && now - sayT < 20 * 60000) return { kind: 'say', text: plain(sp.say.text, 2000), t: sayT };
     if (s.state === 'working' && sp.tool && now - sp.tool.t < 3 * 60000) return { kind: 'tool', text: sp.tool.text };
@@ -2436,13 +2454,14 @@
   function itemHtml(s, cat, ak) {
     var st = CAT[cat];
     var now = Date.now();
-    var subs = (s.subagents || []).length, a = ageClass(s.stateSince, now);
+    var dn = cat === 'approval' && deniedOnly(s), since = dn ? dn.at : s.stateSince;
+    var subs = (s.subagents || []).length, a = ageClass(since, now);
     // 승인·질문은 무엇을 묻는지(마지막 답변 끝의 그 문장)를 보여 준다
-    var detail = s.state === 'done' && (cat === 'approval' || cat === 'question') ? s.askText || askKind(s.lastMessage).text || detailLine(s) : detailLine(s);
+    var detail = dn ? deniedText(dn) : s.state === 'done' && (cat === 'approval' || cat === 'question') ? s.askText || askKind(s.lastMessage).text || detailLine(s) : detailLine(s);
     return todoLi(ak, '<button type="button" class="item' + (a ? ' ' + a : '') + '" data-id="' + esc(s.id) + '" style="border-left-color:' + st.color + '">' +
       '<div class="row1"><span class="pill" style="background:' + st.color + '">' + st.label + '</span><span class="room-name">' + esc(s.room) + '</span>' +
       (roleOf[s.id] ? '<span>' + esc(roleOf[s.id]) + '</span>' : '') +
-      (s.app === 'chat' ? '<span>채팅</span>' : '') + (subs ? '<span>워커 ' + subs + '</span>' : '') + agoHtml(s.stateSince, now) + '</div>' +
+      (s.app === 'chat' ? '<span>채팅</span>' : '') + (subs ? '<span>워커 ' + subs + '</span>' : '') + agoHtml(since, now) + '</div>' +
       '<div class="row2">' + esc(titleOf(s)) + '</div>' +
       (detail ? '<div class="row3">' + esc(detail) + '</div>' : '') + gitRowHtml(s) + '</button>', qrHtml(s, cat));
   }
@@ -2582,11 +2601,20 @@
   // 갈래마다 자주 쓰는 짧은 답. 실수로 보내지 않게 한 번 누르면 '한 번 더 →' 로 바뀌고 4초 안에 다시 눌러야 보낸다.
   var QR = { approval: ['응 진행해', '아니, 하지 마'], question: ['알아서 판단해서 해'], report: ['이어서 진행해', '커밋하고 푸시해'], error: ['다시 해 봐'] };
   var qrState = {};   // 세션 id → { armed: 번호, at, open: 직접 쓰기 칸, draft, note, err }
+  // 단추 글씨(l)와 보낼 말(t). auto mode 가 막은 것은 무엇을 승인하는지 그대로 적어 보낸다 (막는 쪽이 사람의 승인으로 알아보게).
+  function qrTexts(s, cat) {
+    var dn = cat === 'approval' && s && deniedOnly(s);
+    if (dn) return [
+      { l: '승인: 다시 해 줘', t: '박사님 승인: 방금 auto mode가 막은 「' + dn.what + '」 해도 됩니다. 그대로 다시 해 주세요.' },
+      { l: '그건 하지 마', t: '방금 auto mode가 막은 「' + dn.what + '」는 하지 마세요. 다른 방법이 있으면 알려 주세요.' }
+    ];
+    return (QR[cat] || []).map(function (t) { return { l: t, t: t }; });
+  }
   function qrHtml(s, cat) {
     if (!SERVER || SHARE || s.synthetic || showAcked || !QR[cat]) return '';
     var q = qrState[s.id] || {}, armed = q.armed != null && Date.now() - q.at < 4000 ? q.armed : -1;
-    var btns = QR[cat].map(function (t, i) {
-      return '<button type="button" data-qr="' + esc(s.id) + '" data-qi="' + i + '" data-qc="' + cat + '"' + (armed === i ? ' class="armed"' : '') + '>' + (armed === i ? '한 번 더 → ' : '') + esc(t) + '</button>';
+    var btns = qrTexts(s, cat).map(function (x, i) {
+      return '<button type="button" data-qr="' + esc(s.id) + '" data-qi="' + i + '" data-qc="' + cat + '"' + (armed === i ? ' class="armed"' : '') + '>' + (armed === i ? '한 번 더 → ' : '') + esc(x.l) + '</button>';
     }).join('') + '<button type="button" data-qr-open="' + esc(s.id) + '">✎ 직접</button>';
     var input = q.open ? '<form class="qr-input" data-qr-form="' + esc(s.id) + '"><input maxlength="1000" placeholder="이 세션에 보낼 말" value="' + esc(q.draft || '') + '"><button type="submit">보내기</button></form>' : '';
     var note = q.note ? '<span class="qr-note' + (q.err ? ' err' : '') + '">' + esc(q.note) + '</span>' : '';
@@ -2610,7 +2638,7 @@
       e.stopPropagation();
       var sid = b.getAttribute('data-qr'), i = Number(b.getAttribute('data-qi')), cat = b.getAttribute('data-qc');
       var q = qrState[sid] = qrState[sid] || {};
-      if (q.armed === i && Date.now() - q.at < 4000) { sendQuick(sid, QR[cat][i]); return; }
+      if (q.armed === i && Date.now() - q.at < 4000) { var qt = qrTexts(byId[sid], cat)[i]; if (qt) sendQuick(sid, qt.t); return; }
       q.armed = i; q.at = Date.now();
       render();
       setTimeout(render, 4100);
@@ -3152,6 +3180,7 @@
       s.git && s.git.head ? ['변경', esc(gitSheet(s.git))] : null,
       s.ctx ? ['컨텍스트', ctxText(s.ctx) + (s.ctx.tokens && s.ctx.pct != null ? ' (' + Math.round(s.ctx.tokens / 1000) + 'k 토큰)' : '')] : null,
       s.waitingFor ? ['기다리는 것', esc(s.waitingFor)] : null,
+      deniedOnly(s) ? ['막힌 것', esc(deniedText(s.denied)) + ' · ' + ago(s.denied.at, now) + ' 전'] : null,
       s.errorText ? ['오류', esc(s.errorText)] : null,
       s.tool ? ['도구', esc(s.tool)] : null,
       (s.subagents && s.subagents.length) ? ['워커', esc(s.subagents.map(function (a) { return a.type; }).join(', '))] : null,
@@ -3377,7 +3406,7 @@
       return {
         name: room.name, no: room.no, label: room.label, machine: room.machine, kind: room.kind, k: k, overflow: L.overflow,
         status: { label: st.label, color: cssColor(st.color), blink: !!st.blink },
-        alert: list.some(function (s) { return s.state === 'approval' || s.state === 'question'; }) || !!(mt && mt.waitingForUser),
+        alert: list.some(function (s) { return s.state === 'approval' || s.state === 'question' || !!deniedLive(s); }) || !!(mt && mt.waitingForUser),
         meeting: mt ? { agenda: mt.agenda, phase: roundPhase(mt), waiting: !!mt.waitingForUser } : null,
         people: people
       };
