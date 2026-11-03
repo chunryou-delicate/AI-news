@@ -10,7 +10,7 @@
    - `--local` 은 처음 설치할 때 '이 컴퓨터에서만 열림'으로 정하는 옵션이라(`server.json` 을 다시 쓴다) 업데이트 때는 붙이지 않는다.
    - 서버를 쓰지 않으면 `node workroom/deploy.js`
 3. 서버를 다시 켰다면 workroom `server.js` 를 돌리는 node 프로세스 번호가 바뀌었는지 확인한다. 안 바뀌었으면(옛 서버가 `/__quit` 을 몰라서) 그 프로세스만 끄고 시작프로그램의 `workroom-server.vbs` 로 다시 켠다.
-4. `~/.claude/workroom` 의 `현황판.html`, `office3d.js`, `hook.js`, `server.js`, `send.js`, `sync.js`, `acks.js`, `board.js`, `notify.js`, `statusline.js` 가 저장소 `workroom/` 의 같은 파일과 똑같은지 확인한다.
+4. `~/.claude/workroom` 의 `현황판.html`, `office3d.js`, `city-songdo.js`, `hook.js`, `server.js`, `send.js`, `sync.js`, `acks.js`, `board.js`, `notify.js`, `statusline.js` 가 저장소 `workroom/` 의 같은 파일과 똑같은지 확인한다.
 5. 열려 있는 현황판 탭(폰 포함)은 새로고침해야 바뀐다고 사용자에게 알려 준다.
 
 ## 사용자가 따로 말할 때만

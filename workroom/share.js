@@ -17,8 +17,8 @@ const { spawn } = require('child_process');
 
 const ROOT = __dirname;
 const PAGE = '/현황판.html';
-const ALLOWED = /^\/(현황판\.html|office3d\.js|state\.js|speech\.js|logs\/r[0-9a-f]+\.js|models\/p\d+\.js|minutes-index\.js|minutes-js\/[a-z0-9-]+\.js|activity\.js)$/;
-const CACHED = /^\/models\//;
+const ALLOWED = /^\/(현황판\.html|office3d\.js|city-songdo\.js|state\.js|speech\.js|logs\/r[0-9a-f]+\.js|models\/p\d+\.js|minutes-index\.js|minutes-js\/[a-z0-9-]+\.js|activity\.js)$/;
+const CACHED = /^\/(models\/|city-songdo\.js)/;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 const MARK = '<script>window.WR_SHARE = true;</script>';
 
