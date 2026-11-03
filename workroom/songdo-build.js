@@ -14,6 +14,10 @@ const ROT = -62 * Math.PI / 180;                  // 인천타워대로(사옥 �
 const US = 377648832, TWIN = 377648833, PODIUM = 316290866;   // 서쪽 동(사무실이 있는 동), 동쪽 동, 저층부
 const BB = '37.3760,126.6137,37.4084,126.6545';   // 건물·도로·공원 (사옥에서 동서 1.8km, 남북 1.6km)
 const WB = '37.3550,126.5900,37.4250,126.6800';   // 물·해안선 (더 넓게)
+const FB = '37.3850,126.6280,37.4010,126.6500';   // 센트럴파크 둘레 산책로·자전거길·정원 (좁게)
+const LAKE = 18142289;                            // 센트럴파크 호수 (문보트·수상택시가 떠다닌다)
+const HANOK_AREA = 1035501454;                    // 경원재 앰배서더(한옥 호텔) 구역: 그 안 건물은 한옥으로 그린다
+const PAVILIONS = /^(송하정|청명정|명경정)$/;       // 센트럴파크 정자
 const SEA_R = 2800, SEA_CELL = 20;                // 바다 칸 지도: 반경, 칸 크기(m)
 const OUT = path.join(__dirname, 'city-songdo.js');
 
@@ -22,6 +26,7 @@ const QUERIES = {
   'r.json': `[out:json][timeout:110];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|pedestrian)$"](${BB});out geom tags;`,
   'w.json': `[out:json][timeout:140];(way["natural"~"^(water|coastline|wetland|beach|bay)$"](${WB});relation["natural"~"^(water|bay)$"](${WB});way["landuse"="reservoir"](${WB}););out geom tags;`,
   'g.json': `[out:json][timeout:140];(way["leisure"~"^(park|golf_course|pitch|garden|playground)$"](${BB});relation["leisure"~"^(park|golf_course)$"](${BB});way["landuse"~"^(grass|forest|construction|meadow|recreation_ground|brownfield|greenfield)$"](${BB});relation["landuse"~"^(grass|forest|construction)$"](${BB}););out geom tags;`,
+  'f.json': `[out:json][timeout:90];(way["highway"~"^(footway|path|cycleway|steps|pedestrian|track)$"](${FB});way["leisure"~"^(playground|garden|pitch|marina|slipway)$"](${FB});way["man_made"~"^(pier|bridge)$"](${FB});way(${HANOK_AREA});way["landuse"="commercial"](${FB}););out geom tags;`,
 };
 const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 
@@ -146,6 +151,7 @@ function kindOf(t, h, id) {
 
 function build(dir) {
   const B = load(dir, 'b.json'), R = load(dir, 'r.json'), Wt = load(dir, 'w.json'), G = load(dir, 'g.json'), REL = load(dir, 'rel.json');
+  const F = fs.existsSync(path.join(dir, 'f.json')) ? load(dir, 'f.json') : [];
   const relById = {}; REL.forEach((e) => { relById[e.id] = e; });
   // (0,0) 을 서쪽 동 한가운데로
   const us = B.find((e) => e.id === US);
@@ -154,9 +160,11 @@ function build(dir) {
   OX = (Math.min(...ux) + Math.max(...ux)) / 2; OZ = (Math.min(...uz) + Math.max(...uz)) / 2;
   const bbox = (r) => { const xs = r.map((p) => p[0]), zs = r.map((p) => p[1]); return [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)].map((v) => Math.round(v * 10) / 10); };
 
-  const out = { v: 1, credit: '지도 © OpenStreetMap', us: bbox(us.geometry.map(T)), twin: null, b: [], r: [], w: [], g: [], mud: [], far: [], sea: null };
-  // ---- 건물: [모양, 높이, 표시, 바깥고리, 구멍...]  표시 1 쌍둥이 동, 2 저층부, 4 트라이볼(그릇 모양)
-  let nb = 0;
+  const out = { v: 1, credit: '지도 © OpenStreetMap', us: bbox(us.geometry.map(T)), twin: null, b: [], r: [], w: [], g: [], mud: [], far: [], sea: null, lake: [], p: [], cw: [] };
+  const hanokWay = F.find((e) => e.id === HANOK_AREA && e.geometry), hanokRing = hanokWay ? hanokWay.geometry.map(T) : null;
+  const centroid = (r) => { let x = 0, z = 0; r.forEach((p) => { x += p[0]; z += p[1]; }); return [x / r.length, z / r.length]; };
+  // ---- 건물: [모양, 높이, 표시, 바깥고리, 구멍...]  표시 1 쌍둥이 동, 2 저층부, 4 트라이볼(그릇 모양), 8 빈 땅 채움, 16 한옥, 32 정자
+  let nb = 0, nHanok = 0;
   for (const e of B) {
     if (e.id === US || !e.tags || /^(construction|roof)$/.test(e.tags.building)) continue;
     for (const pg of polysOf(e, relById)) {
@@ -164,9 +172,12 @@ function build(dir) {
       if (!o) continue;
       const a = Math.abs(areaOf(o));
       if (a < 12) continue;
-      const t = e.tags, h = heightOf(t, a);
+      const t = e.tags;
+      let h = heightOf(t, a);
       let flag = e.id === TWIN ? 1 : e.id === PODIUM ? 2 : t.name === '트라이볼' ? 4 : 0;
-      const row = [kindOf(t, h, e.id), Math.round(h * 10) / 10, flag, flat(o)];
+      if (PAVILIONS.test(t.name || '')) { flag = 32; h = 3.2; }
+      else if (hanokRing && !t.height && !t['building:levels'] && inside(centroid(o), hanokRing)) { flag = 16; h = 4.6; nHanok++; }
+      const row = [flag & 48 ? 3 : kindOf(t, h, e.id), Math.round(h * 10) / 10, flag, flat(o)];
       pg.inner.forEach((hr) => { const r = ring(hr, 0.6, true); if (r) row.push(flat(r)); });
       out.b.push(row); nb++;
       if (flag === 1) out.twin = bbox(o);
@@ -192,6 +203,7 @@ function build(dir) {
       if (!o || Math.abs(areaOf(o)) < 300) continue;
       const row = [flat(o)];
       pg.inner.forEach((hr) => { const r = ring(hr, 1.5, true); if (r) row.push(flat(r)); });
+      if (isW && e.id === LAKE) out.lake.push(out.w.length);
       (isW ? out.w : out.mud).push(row);
     }
   }
@@ -206,7 +218,21 @@ function build(dir) {
       out.g.push(row);
     }
   }
+  // 센트럴파크 둘레 정원(5, 꽃밭)·놀이터(6)·운동장(3)
+  for (const e of F) {
+    const t = e.tags || {}, k = t.leisure === 'garden' ? 5 : t.leisure === 'playground' ? 6 : t.leisure === 'pitch' ? 3 : -1;
+    if (k < 0 || !e.geometry) continue;
+    const o = ring(e.geometry.map(T), 1, false);
+    if (o && Math.abs(areaOf(o)) >= 60) out.g.push([k, flat(o)]);
+  }
   out.g.sort((a, b) => (a[0] === 4 ? -1 : 0) - (b[0] === 4 ? -1 : 0));   // 공사장 먼저, 공원은 그 위에
+  // ---- 산책로: [종류, 다리, 좌표]  0 보행로, 1 자전거길, 2 계단, 3 부두
+  for (const e of F) {
+    const t = e.tags || {}, k = /footway|path|pedestrian|track/.test(t.highway || '') ? 0 : t.highway === 'cycleway' ? 1 : t.highway === 'steps' ? 2 : t.man_made === 'pier' ? 3 : -1;
+    if (k < 0 || !e.geometry) continue;
+    const pts = simplify(e.geometry.map(T), 0.8);
+    if (pts.length >= 2) out.p.push([k, t.bridge === 'yes' || t.man_made === 'pier' ? 1 : 0, flat(pts)]);
+  }
 
   // ---- 바다 칸 지도: 해안선 칸으로 땅을 덩어리로 나누고, 덩어리마다 해안선 양쪽 표시로 바다인지 정한다.
   // OSM 해안선은 가는 쪽 왼쪽이 땅, 오른쪽이 바다. 송도와 본토 사이 물길처럼 해안선이 범위 밖으로 끊긴 곳이 있어서
@@ -269,12 +295,90 @@ function build(dir) {
     }
   }
 
+  // ---- 빈 땅 채우기: 공사장·빈 터에 가까운 큰길 방향으로 선 건물을 듬성듬성 세운다 (실제 건물이 아니라 '있을 법한' 송도)
+  // 물·공원·숲·운동장·바다 위, 길 가까이, 다른 건물 가까이, 사무실 둘레 130m 안에는 세우지 않는다. 400m 안은 사무실 바닥보다 낮게.
+  const ROADW = [24, 20, 15, 11, 7, 5], CELLG = 40, segIdx = new Map(), bIdx = new Map();
+  const key = (gx, gz) => gx * 100003 + gz;
+  const addIdx = (m, x0, z0, x1, z1, v) => { for (let gx = Math.floor(x0 / CELLG); gx <= Math.floor(x1 / CELLG); gx++) for (let gz = Math.floor(z0 / CELLG); gz <= Math.floor(z1 / CELLG); gz++) { const k = key(gx, gz); if (!m.has(k)) m.set(k, []); m.get(k).push(v); } };
+  const near = (m, x, z, r) => { const out2 = new Set(); for (let gx = Math.floor((x - r) / CELLG); gx <= Math.floor((x + r) / CELLG); gx++) for (let gz = Math.floor((z - r) / CELLG); gz <= Math.floor((z + r) / CELLG); gz++) (m.get(key(gx, gz)) || []).forEach((v) => out2.add(v)); return out2; };
+  out.r.forEach((rd) => {
+    const r = rd[3], hw = ROADW[rd[0]] * (rd[1] ? 0.62 : 1) / 2;
+    for (let i = 0; i + 3 < r.length; i += 2) { const s = { ax: r[i], az: r[i + 1], bx: r[i + 2], bz: r[i + 3], hw, cls: rd[0] }; addIdx(segIdx, Math.min(s.ax, s.bx) - 30, Math.min(s.az, s.bz) - 30, Math.max(s.ax, s.bx) + 30, Math.max(s.az, s.bz) + 30, s); }
+  });
+  const ringBox = (fr) => { const b = [1e9, 1e9, -1e9, -1e9]; for (let i = 0; i < fr.length; i += 2) { b[0] = Math.min(b[0], fr[i]); b[1] = Math.min(b[1], fr[i + 1]); b[2] = Math.max(b[2], fr[i]); b[3] = Math.max(b[3], fr[i + 1]); } return b; };
+  const toPts = (fr) => { const o = []; for (let i = 0; i < fr.length; i += 2) o.push([fr[i], fr[i + 1]]); return o; };
+  out.b.forEach((row) => { const b = ringBox(row[3]); addIdx(bIdx, b[0], b[1], b[2], b[3], b); });
+  const blockers = out.w.map((p) => ({ b: ringBox(p[0]), r: p.map(toPts) })).concat(out.g.filter((p) => p[0] !== 4).map((p) => ({ b: ringBox(p[1]), r: p.slice(1).map(toPts) })));
+  const inRingsB = (x, z, rs) => { let c = false; rs.forEach((r) => { if (inside([x, z], r)) c = !c; }); return c; };
+  function segDist(s, x, z) { const dx = s.bx - s.ax, dz = s.bz - s.az, L2 = dx * dx + dz * dz || 1e-9; const u = Math.max(0, Math.min(1, ((x - s.ax) * dx + (z - s.az) * dz) / L2)); return Math.hypot(s.ax + dx * u - x, s.az + dz * u - z); }
+  function okPoint(x, z) {
+    if (Math.hypot(x, z) < 130 || Math.hypot(x, z) > 1550) return false;
+    if (out.sea) { const [gx, gz] = cell(x, z); if (gx < 0 || gz < 0 || gx >= N || gz >= N || grid[gz * N + gx] === 2) return false; }
+    for (const s of near(segIdx, x, z, 0)) if (segDist(s, x, z) < s.hw + 7) return false;
+    for (const b of near(bIdx, x, z, 8)) if (x > b[0] - 8 && x < b[2] + 8 && z > b[1] - 8 && z < b[3] + 8) return false;
+    return !blockers.some((bl) => x > bl.b[0] && x < bl.b[2] && z > bl.b[1] && z < bl.b[3] && inRingsB(x, z, bl.r));
+  }
+  function roadAngle(x, z) {   // 가장 가까운 큰길 방향 (건물을 그 방향으로 세운다)
+    let best = null, bd = 1e9;
+    for (const s of near(segIdx, x, z, 40)) { if (s.cls > 4) continue; const d = segDist(s, x, z); if (d < bd) { bd = d; best = s; } }
+    return best ? Math.atan2(best.bz - best.az, best.bx - best.ax) : 0;
+  }
+  let sd2 = 77031; const rnd2 = () => { sd2 = (sd2 * 16807) % 2147483647; return sd2 / 2147483647; };
+  const cands = [];
+  for (let x = -1550; x <= 1550; x += 34) for (let z = -1550; z <= 1550; z += 34) cands.push([x + (rnd2() - 0.5) * 16, z + (rnd2() - 0.5) * 16, rnd2()]);
+  cands.sort((a, b) => a[2] - b[2]);
+  let nFill = 0;
+  for (const [x, z] of cands) {
+    if (nFill >= 900 || !okPoint(x, z)) continue;
+    const d = Math.hypot(x, z), r = rnd2(), cap = d < 400 ? 95 : 1e9;
+    let w, dd, h, k;
+    if (r < 0.42) { w = 20 + rnd2() * 8; dd = 18 + rnd2() * 8; h = Math.min(cap, 70 + Math.pow(rnd2(), 1.3) * 110); k = rnd2() < 0.3 ? 0 : 2; }   // 아파트 탑
+    else if (r < 0.72) { w = 26 + rnd2() * 20; dd = 20 + rnd2() * 14; h = Math.min(cap, 25 + Math.pow(rnd2(), 1.5) * 95); k = rnd2() < 0.6 ? 0 : 1; }   // 업무
+    else { w = 20 + rnd2() * 22; dd = 15 + rnd2() * 15; h = 8 + rnd2() * 14; k = 3; }   // 저층 상가
+    const a = roadAngle(x, z), ca = Math.cos(a), sa = Math.sin(a);
+    const corner = (u, v) => [x + ca * u - sa * v, z + sa * u + ca * v];
+    const pts = [corner(-w / 2, -dd / 2), corner(-w / 2, dd / 2), corner(w / 2, dd / 2), corner(w / 2, -dd / 2), corner(0, 0), corner(-w / 2, 0), corner(w / 2, 0), corner(0, -dd / 2), corner(0, dd / 2)];
+    if (!pts.every((p) => okPoint(p[0], p[1]))) continue;
+    const o = ring(pts.slice(0, 4), 0.1, false);
+    out.b.push([k, Math.round(h * 10) / 10, 8, flat(o)]);
+    const b = ringBox(flat(o)); addIdx(bIdx, b[0], b[1], b[2], b[3], b);
+    nFill++;
+  }
+
+  // ---- 횡단보도: 큰길(집산도로까지)끼리 만나는 곳마다, 각 길을 건너는 자리(교차로 양쪽)에 [x, z, 길 방향, 길 폭]
+  const majors = [];
+  out.r.forEach((rd, ri) => { if (rd[0] > 3) return; const r = rd[3]; for (let i = 0; i + 3 < r.length; i += 2) majors.push({ ri, ax: r[i], az: r[i + 1], bx: r[i + 2], bz: r[i + 3], w: ROADW[rd[0]] * (rd[1] ? 0.62 : 1) }); });
+  const mIdx = new Map(); majors.forEach((s) => addIdx(mIdx, Math.min(s.ax, s.bx), Math.min(s.az, s.bz), Math.max(s.ax, s.bx), Math.max(s.az, s.bz), s));
+  const seen = new Set(), cw = [];
+  for (const s of majors) {
+    for (const t2 of near(mIdx, (s.ax + s.bx) / 2, (s.az + s.bz) / 2, Math.hypot(s.bx - s.ax, s.bz - s.az) / 2)) {
+      if (t2.ri <= s.ri || seen.has(s.ri + ':' + t2.ri + ':' + Math.round(s.ax))) continue;
+      const d1x = s.bx - s.ax, d1z = s.bz - s.az, d2x = t2.bx - t2.ax, d2z = t2.bz - t2.az, den = d1x * d2z - d1z * d2x;
+      if (Math.abs(den) < 1e-6) continue;
+      const u = ((t2.ax - s.ax) * d2z - (t2.az - s.az) * d2x) / den, v = ((t2.ax - s.ax) * d1z - (t2.az - s.az) * d1x) / den;
+      if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+      const px = s.ax + d1x * u, pz = s.az + d1z * u;
+      const sin = Math.abs(den) / (Math.hypot(d1x, d1z) * Math.hypot(d2x, d2z));
+      if (sin < 0.5) continue;   // 거의 나란히 합쳐지는 곳(진입로)은 빼고
+      [[s, t2], [t2, s]].forEach(([A, Bs]) => {
+        const L = Math.hypot(A.bx - A.ax, A.bz - A.az), ux = (A.bx - A.ax) / L, uz = (A.bz - A.az) / L, off = Bs.w / 2 / sin + 3;
+        [-1, 1].forEach((sg) => {
+          const cx = px + ux * off * sg, cz = pz + uz * off * sg;
+          if (cw.some((c) => Math.hypot(c[0] - cx, c[1] - cz) < 7)) return;
+          cw.push([Math.round(cx * 10) / 10, Math.round(cz * 10) / 10, Math.round(Math.atan2(uz, ux) * 1000) / 1000, Math.round(A.w * 10) / 10]);
+        });
+      });
+    }
+  }
+  out.cw = cw.filter((c) => Math.hypot(c[0], c[1]) < 1500);
+
   const js = '// 3D 사무실 \'도시\' 배경: 포스코이앤씨 송도사옥 둘레 송도 지도. songdo-build.js 로 만든 파일이라 손으로 고치지 않는다.\n' +
     '// 좌표는 미터, 사옥 서쪽 동 한가운데가 (0,0), 인천타워대로가 x 축과 나란하게 62° 돌렸다 (x 오른쪽, z 앞쪽).\n' +
     '// 지도 자료 © OpenStreetMap contributors, ODbL 1.0 (https://www.openstreetmap.org/copyright)\n' +
     'window.OFFICE3D_CITY = ' + JSON.stringify(out) + ';\n';
   fs.writeFileSync(OUT, js);
-  console.log(`만듦: ${path.basename(OUT)} ${Math.round(js.length / 1024)}KB · 건물 ${nb} · 도로 ${out.r.length} · 물 ${out.w.length} · 갯벌 ${out.mud.length} · 녹지 ${out.g.length} · 먼 빌딩 ${out.far.length} · 바다 ${out.sea ? seaN + '칸' : '없음'} · 옆 동 ${out.twin ? 'O' : 'X'}`);
+  console.log(`만듦: ${path.basename(OUT)} ${Math.round(js.length / 1024)}KB · 건물 ${nb} (한옥 ${nHanok}) + 채움 ${nFill} · 도로 ${out.r.length} · 산책로 ${out.p.length} · 횡단보도 ${out.cw.length} · 호수 ${out.lake.length}`);
+  console.log(`      도로 ${out.r.length} · 물 ${out.w.length} · 갯벌 ${out.mud.length} · 녹지 ${out.g.length} · 먼 빌딩 ${out.far.length} · 바다 ${out.sea ? seaN + '칸' : '없음'} · 옆 동 ${out.twin ? 'O' : 'X'}`);
   return { grid, N };
 }
 
