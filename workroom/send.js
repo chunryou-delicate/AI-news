@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { spawnSync } = require('child_process');
+const { spawnSync, execFileSync } = require('child_process');
 
 const ROOT = __dirname;
 const OUTBOX = path.join(ROOT, 'outbox');
@@ -102,12 +102,23 @@ function orcaError(r) {
 function deliverLocal(sid, text) {
   text = cleanText(text);
   if (!text) return { ok: false, error: '보낼 말이 비어 있어요' };
-  const s = (readState().sessions || []).find((x) => x.id === sid && !x.machine);
+  const sessions = readState().sessions || [];
+  const s = sessions.find((x) => x.id === sid && !x.machine);
   if (!s) return { ok: false, error: '이 컴퓨터에서 그 세션을 찾지 못했어요' };
-  if (s.state === 'ended') return { ok: false, error: '이미 끝난 세션이에요' };
   const handle = s.orca && s.orca.terminal;
-  if (!handle) return { ok: false, error: 'Orca 터미널에서 돌고 있는 세션만 받을 수 있어요 (채팅 탭은 아직 안 돼요)' };
-  return deliverHandle(handle, text);
+  if (!handle && s.state !== 'ended' && s.orca && (s.orca.agent || s.orca.pane || s.orca.tab)) {
+    return { ok: false, error: 'Orca 터미널에서 돌고 있는 세션만 받을 수 있어요 (채팅 탭은 아직 안 돼요)' };
+  }
+  if (handle) {
+    // 다른 세션이 그 터미널을 이어받아 쓰고 있으면 거기엔 넣지 않고 새로 깨운다
+    const taken = s.state === 'ended' && sessions.some((x) => x.id !== sid && !x.machine && x.state !== 'ended' && x.orca && x.orca.terminal === handle);
+    if (!taken) {
+      const chk = agentTerminal(handle);
+      if (chk.ok) return deliverHandle(handle, text, true);
+      if (!chk.wake) return chk;                       // Orca 연결 실패·시간 초과 같은 건 깨우지 않고 그대로 알린다
+    }
+  }
+  return wakeAndDeliver(s, text);
 }
 // 그 터미널에 에이전트가 돌고 있을 때만 넣는다 (셸에 명령으로 들어가지 않게)
 function agentTerminal(handle) {
@@ -117,19 +128,34 @@ function agentTerminal(handle) {
   }
   if (!info || !info.ok) {
     const code = info && info.error && info.error.code;
-    return { ok: false, error: /stale|not_found|unknown/i.test(String(code)) ? '그 세션 터미널이 지금 열려 있지 않아요' : orcaError(info) };
+    const gone = /stale|not_found|unknown/i.test(String(code));
+    return { ok: false, error: gone ? '그 세션 터미널이 지금 열려 있지 않아요' : orcaError(info), wake: gone ? 'gone' : '' };
   }
   const t = info.result && (info.result.terminal || info.result);
-  if (!t || t.handle !== handle) return { ok: false, error: '그 세션 터미널이 지금 열려 있지 않아요' };
+  if (!t || t.handle !== handle) return { ok: false, error: '그 세션 터미널이 지금 열려 있지 않아요', wake: 'gone' };
   if (t.connected === false || t.writable === false) {
-    return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)' };
+    return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)', wake: 'gone' };
   }
-  // Orca 의 agentIdentity 는 같은 터미널인데도 호출마다 붙었다 빠졌다 한다 (탭이 안 보일 때 등).
-  // 빠져 있으면 터미널 목록과 화면 미리보기(Claude Code 입력줄)로 한 번 더 확인하고, 셋 다 아니라고 할 때만 거른다.
-  if (!t.agentIdentity && !listedAgent(handle) && !previewLooksLikeAgent(t.preview)) {
-    return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)' };
-  }
-  return { ok: true };
+  // Orca 의 agentIdentity 는 믿기 어렵다: 같은 터미널인데 호출마다 붙었다 빠졌다 하고(탭이 안 보일 때 등),
+  // Claude 가 끝나 셸만 남았는데도 한참 "claude" 로 남는다. 그래서 화면 미리보기를 먼저 본다.
+  //   1) 입력줄(❯)과 Claude Code 안내 문구가 보이면 에이전트가 있다.
+  //   2) 마지막 줄이 셸 프롬프트면 표시와 상관없이 셸이다 → 그 자리에서 깨운다.
+  //   3) 둘 다 아니면(화면이 좁아 안내가 안 보이는 Claude, 다른 프로그램) Orca 표시·터미널 목록을 따른다.
+  if (previewLooksLikeAgent(t.preview)) return { ok: true };
+  const noAgent = { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)', worktreePath: t.worktreePath || '' };
+  if (shellIdle(t.preview)) return Object.assign(noAgent, { wake: 'shell' });
+  if (t.agentIdentity || listedAgent(handle)) return { ok: true };
+  return Object.assign(noAgent, { wake: 'busy' });   // 다른 프로그램이 떠 있을 수 있으니 새 터미널에서 깨운다
+}
+// 마지막 줄이 셸 프롬프트로 끝나는지 (bash $, zsh %, root #, PowerShell >, starship ❯)
+function shellIdle(preview) {
+  const p = String(preview || '');
+  if (previewLooksLikeAgent(p)) return false;
+  const lines = p.split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean);
+  const last = lines[lines.length - 1] || '';
+  if (/[$#%>]\s*$/.test(last)) return true;
+  // ❯ 는 starship 같은 셸 프롬프트에도, Claude Code 입력줄에도 쓰인다. Claude 는 입력줄 위에 ─── 구분선이 있다.
+  return /❯\s*$/.test(last) && !/─{3,}/.test(p);
 }
 function listedAgent(handle) {
   let r;
@@ -143,14 +169,95 @@ function previewLooksLikeAgent(preview) {
   const p = String(preview || '');
   return /❯/.test(p) && /shift\+tab|bypass permissions|accept edits|plan mode|\? for shortcuts|esc to interrupt|auto-accept|ctrl\+c to/i.test(p);
 }
-function deliverHandle(handle, text) {
-  const chk = agentTerminal(handle);
-  if (!chk.ok) return chk;
+function deliverHandle(handle, text, checked) {
+  if (!checked) {
+    const chk = agentTerminal(handle);
+    if (!chk.ok) return chk;
+  }
   let r;
   try { r = orca(['terminal', 'send', '--terminal', handle, '--text', text, '--enter'], SEND_MS); } catch (e) {
     return { ok: false, error: e.timeout ? `Orca 가 ${SEND_MS / 1000}초 안에 답하지 않았어요. 들어갔을 수도 있으니 터미널을 보고 다시 보내 주세요` : '보내다 오류가 났어요: ' + String(e.message || e).slice(0, 160) };
   }
   return r && r.ok ? { ok: true } : { ok: false, error: orcaError(r) };
+}
+
+// ---------- 깨우기: 에이전트가 안 돌고 있으면 그 세션을 claude --resume 으로 다시 띄운 뒤 넣는다 ----------
+// 끝난 세션이거나 Claude 가 꺼져 셸만 남은 터미널에 온 지시도 버리지 않는다. 터미널이 열려 있고 셸 프롬프트면 그 자리에서,
+// 아니면 Orca 에 그 프로젝트 폴더로 새 터미널을 열어 resume 한다. 세션 ID 는 그대로라 현황판에서도 같은 사람으로 이어진다.
+const WAKE_MS = 90 * 1000;
+const WAKE_POLL_MS = 20 * 1000;
+function encodeProject(p) { return String(p || '').replace(/[^A-Za-z0-9]/g, '-'); }
+function gitTop(dir) {
+  try { return execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim(); } catch (_) { return ''; }
+}
+// claude --resume 은 그 대화 기록이 있는 프로젝트 폴더에서 해야 찾는다. 기록 파일 폴더 이름(-home-me-proj)과 맞는 후보를 고른다.
+function projectDir(s, worktreePath) {
+  const want = s.transcriptPath ? path.basename(path.dirname(s.transcriptPath)) : '';
+  const cands = [];
+  const push = (p) => { if (p && isDir(p) && !cands.includes(p)) cands.push(p); };
+  push(worktreePath); push(s.cwd); push(gitTop(s.cwd || ''));
+  for (let d = s.cwd || ''; d && path.dirname(d) !== d; d = path.dirname(d)) push(d);
+  if (want) { const hit = cands.find((p) => encodeProject(p) === want); if (hit) return hit; }
+  return cands[0] || '';
+}
+function shellQuote(v) { return process.platform === 'win32' ? '"' + String(v).replace(/"/g, '""') + '"' : "'" + String(v).replace(/'/g, "'\\''") + "'"; }
+function resumeCommand(s) {
+  const parts = ['claude', '--resume', s.id];
+  if (s.permissionMode && s.permissionMode !== 'default') parts.push('--permission-mode', s.permissionMode);
+  let cmd = parts.join(' ');
+  if (s.configDir) cmd = process.platform === 'win32' ? `set "CLAUDE_CONFIG_DIR=${s.configDir}" && ${cmd}` : `CLAUDE_CONFIG_DIR=${shellQuote(s.configDir)} ${cmd}`;
+  return cmd;
+}
+function rememberTerminal(sid, handle) {
+  const file = path.join(ROOT, 'sessions', String(sid).replace(/[^A-Za-z0-9_-]/g, '_') + '.json');
+  const s = readJson(file, null);
+  if (!s) return;
+  s.orca = Object.assign({}, s.orca || {}, { terminal: handle });
+  if (s.state === 'ended') Object.assign(s, { state: 'working', stateSince: Date.now(), endReason: '' });
+  s.updatedAt = Date.now();
+  try { writeAtomic(file, JSON.stringify(s)); } catch (_) {}
+}
+// Claude 화면이 뜰 때까지 기다린다 (tui-idle 뒤에도 잠깐 더 확인)
+function waitAgent(handle) {
+  try { orca(['terminal', 'wait', '--terminal', handle, '--for', 'tui-idle', '--timeout-ms', String(WAKE_MS)], WAKE_MS + 10000); } catch (_) {}
+  const until = Date.now() + WAKE_POLL_MS;
+  for (;;) {
+    const chk = agentTerminal(handle);
+    if (chk.ok) return chk;
+    if (Date.now() > until) return chk;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+  }
+}
+function wakeAndDeliver(s, text) {
+  const handle = s.orca && s.orca.terminal;
+  const chk = handle ? agentTerminal(handle) : { ok: false, wake: 'gone' };
+  const cmd = resumeCommand(s);
+  let target = '', how = '';
+  if (chk.wake === 'shell') {
+    // 그 터미널의 셸에 resume 명령을 친다
+    let r;
+    try { r = orca(['terminal', 'send', '--terminal', handle, '--text', cmd, '--enter'], SEND_MS); } catch (e) {
+      return { ok: false, error: '세션을 깨우지 못했어요: ' + (e.timeout ? 'Orca 가 답하지 않았어요' : String(e.message || e).slice(0, 120)) };
+    }
+    if (!r || !r.ok) return { ok: false, error: '세션을 깨우지 못했어요: ' + orcaError(r) };
+    target = handle; how = 'resumed';
+  } else {
+    const dir = projectDir(s, chk.worktreePath);
+    if (!dir) return { ok: false, error: '끝난 세션이고 프로젝트 폴더를 이 컴퓨터에서 찾지 못해 깨우지 못했어요' };
+    let r;
+    try { r = orca(['terminal', 'create', '--worktree', 'path:' + dir, '--title', s.title || 'Claude Code', '--command', cmd], CREATE_MS); } catch (e) {
+      return { ok: false, error: '세션을 깨울 터미널을 열지 못했어요: ' + (e.timeout ? 'Orca 가 답하지 않았어요' : String(e.message || e).slice(0, 120)) };
+    }
+    if (!r || !r.ok) return { ok: false, error: /worktree|not.?found|unknown/i.test(JSON.stringify((r && r.error) || '')) ? '세션을 깨우려면 그 폴더가 Orca 에 프로젝트로 등록돼 있어야 해요' : '세션을 깨우지 못했어요: ' + orcaError(r) };
+    const t = r.result && (r.result.terminal || r.result);
+    if (!t || !t.handle) return { ok: false, error: '세션을 깨울 터미널을 열었지만 손잡이를 받지 못했어요' };
+    target = t.handle; how = 'opened';
+    rememberTerminal(s.id, target);
+  }
+  const up = waitAgent(target);
+  if (!up.ok) return { ok: false, error: `세션을 깨웠지만 Claude 가 뜨지 않았어요 (${how === 'resumed' ? '그 터미널' : '새 터미널'}을 확인해 주세요): ${up.error}` };
+  const d = deliverHandle(target, text, true);
+  return d.ok ? { ok: true, woke: how, note: how === 'resumed' ? '잠든 세션을 그 터미널에서 깨워서 넣었어요' : '끝난 세션을 새 터미널에서 다시 열어 넣었어요' } : d;
 }
 
 // ---------- 보낸 기록 ----------
@@ -209,7 +316,7 @@ function send(sid, text) {
     return { ok: true, id, status: 'queued', toMachine: s.machine };
   }
   const r = deliverLocal(sid, text);
-  logAdd(Object.assign({ status: r.ok ? 'delivered' : 'failed', error: r.error || '', doneAt: Date.now() }, base));
+  logAdd(Object.assign({ status: r.ok ? 'delivered' : 'failed', error: r.error || '', note: r.note || '', doneAt: Date.now() }, base));
   return Object.assign({ id, status: r.ok ? 'delivered' : 'failed' }, r);
 }
 
