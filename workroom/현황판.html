@@ -681,9 +681,15 @@
   .send-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted); min-height: 1em; }
   .send-note.err { color: var(--approval); font-weight: 600; }
   .send-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
-  .send-list li { display: flex; gap: 6px; min-width: 0; }
+  .send-list li { display: flex; gap: 6px; min-width: 0; cursor: pointer; }
   .send-list b { flex: none; font-weight: 700; }
   .send-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 펼친 줄(못 넣은 지시는 늘 펼침): 보낸 말 전체, 그 아래 이유와 '다시 쓰기' */
+  .send-list li.full { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; align-items: start; }
+  .send-list li.full span { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+  .send-list .why { grid-column: 2; font-style: normal; font-size: 11.5px; color: var(--approval); overflow-wrap: anywhere; }
+  .send-list .resend { grid-column: 2; justify-self: start; margin-top: 2px; }
+  .send-list li:not(.full) .why, .send-list li:not(.full) .resend { display: none; }
   .send-list .ok b { color: var(--working); }
   .send-list .wait b { color: var(--question); }
   .send-list .bad b { color: var(--approval); }
@@ -3298,8 +3304,21 @@
   // ---------- 지시 보내기 ----------
   // 세션 창에서 짧은 말을 그 세션 터미널에 넣는다 (server.js → send.js). 다른 컴퓨터 세션은 동기화로 1~2분 뒤 들어간다.
   // 서버로 연 현황판에서만 된다 (파일로 열면 보낼 곳이 없다).
-  var sendPoll = 0;
+  var sendPoll = 0, sendItems = [], sendOpen = {};   // sendOpen: 눌러서 펼친 줄 (다시 그려도 펼친 채로)
   var SEND_STATUS = { delivered: ['ok', '들어감'], queued: ['wait', '전달 대기'], failed: ['bad', '못 넣음'] };
+  // 보낸 줄을 누르면 전체 문장을 펼치고 접는다. 못 넣은 줄의 '다시 쓰기'는 그 말을 입력칸에 다시 넣는다
+  document.getElementById('sendList').addEventListener('click', function (ev) {
+    var rb = ev.target.closest('[data-resend]');
+    if (rb) {
+      var it = sendItems[+rb.getAttribute('data-resend')], ta = document.getElementById('sendText');
+      if (it) { ta.value = it.text; ta.focus(); }
+      return;
+    }
+    var li = ev.target.closest('[data-send]'), e = li && sendItems[+li.getAttribute('data-send')];
+    if (!e || e.status === 'failed') return;
+    sendOpen[e.id] = !sendOpen[e.id];
+    li.classList.toggle('full', !!sendOpen[e.id]);
+  });
   function openSendBox(id) {
     var s = byId[id], box = document.getElementById('sendBox');
     var can = /^https?:$/.test(location.protocol) && s && !s.synthetic && s.state !== 'ended';
@@ -3316,12 +3335,17 @@
     if (SHARE) return;
     fetch('__sends?sid=' + encodeURIComponent(id), { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (j) {
       if (openId !== id) return;
-      var list = (j.list || []).slice(-3).reverse();
-      document.getElementById('sendList').innerHTML = list.map(function (e) {
-        var st = SEND_STATUS[e.status] || SEND_STATUS.queued;
+      // 최근 세 개 + 그보다 앞이라도 하루 안에 못 넣은 것 (최대 여섯 개, 최근 것부터)
+      var all = j.list || [], recent = all.slice(-3), day = Date.now() - 864e5;
+      var list = all.filter(function (e) { return recent.indexOf(e) >= 0 || (e.status === 'failed' && e.at > day); }).slice(-6).reverse();
+      sendItems = list;
+      document.getElementById('sendList').innerHTML = list.map(function (e, i) {
+        var st = SEND_STATUS[e.status] || SEND_STATUS.queued, bad = e.status === 'failed';
         // 다른 컴퓨터가 동기화 사이에 밀린 지시를 하나로 합쳐 넣었으면 '합쳐서 들어감'
         var label = e.status === 'delivered' && e.merged > 1 ? '합쳐서 들어감' : st[1];
-        return '<li class="' + st[0] + '" title="' + esc(e.error || '') + '"><b>' + hm(e.at) + ' ' + label + '</b><span>' + esc(e.error ? e.text + ' — ' + e.error : e.text) + '</span></li>';
+        return '<li class="' + st[0] + (bad || sendOpen[e.id] ? ' full' : '') + '" data-send="' + i + '"><b>' + hm(e.at) + ' ' + label + '</b><span>' + esc(e.text) + '</span>' +
+          (e.error ? '<em class="why">이유: ' + esc(e.error) + '</em>' : '') +
+          (bad ? '<button type="button" class="mini-btn resend" data-resend="' + i + '" title="이 말을 아래 입력칸에 다시 넣어요">다시 쓰기</button>' : '') + '</li>';
       }).join('');
       // 다른 컴퓨터로 보낸 것이 아직 대기면 조금 뒤 다시 본다
       if (list.some(function (e) { return e.status === 'queued'; })) sendPoll = setTimeout(function () { loadSends(id); }, 6000);
