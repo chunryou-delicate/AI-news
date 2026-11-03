@@ -143,7 +143,7 @@ function agentTerminal(handle) {
   //   3) 둘 다 아니면(화면이 좁아 안내가 안 보이는 Claude, 다른 프로그램) Orca 표시·터미널 목록을 따른다.
   if (previewLooksLikeAgent(t.preview)) return { ok: true };
   const noAgent = { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)', worktreePath: t.worktreePath || '' };
-  if (shellIdle(t.preview)) return Object.assign(noAgent, { wake: 'shell' });
+  if (shellIdle(t.preview)) return Object.assign(noAgent, { wake: 'shell', shell: promptKind(t.preview) });
   if (t.agentIdentity || listedAgent(handle)) return { ok: true };
   return Object.assign(noAgent, { wake: 'busy' });   // 다른 프로그램이 떠 있을 수 있으니 새 터미널에서 깨운다
 }
@@ -156,6 +156,15 @@ function shellIdle(preview) {
   if (/[$#%>]\s*$/.test(last)) return true;
   // ❯ 는 starship 같은 셸 프롬프트에도, Claude Code 입력줄에도 쓰인다. Claude 는 입력줄 위에 ─── 구분선이 있다.
   return /❯\s*$/.test(last) && !/─{3,}/.test(p);
+}
+// 셸 프롬프트 모양으로 셸 종류를 짐작한다: PowerShell "PS C:\…>", cmd "C:\…>", 나머지는 sh 계열
+function promptKind(preview) {
+  const lines = String(preview || '').split('\n').map((l) => l.replace(/\s+$/, '')).filter(Boolean);
+  const last = lines[lines.length - 1] || '';
+  if (/^PS\b.*>$/.test(last)) return 'powershell';
+  if (/^[A-Za-z]:\\.*>$/.test(last)) return 'cmd';
+  if (/[$#%]$/.test(last)) return 'posix';
+  return process.platform === 'win32' ? 'powershell' : 'posix';
 }
 function listedAgent(handle) {
   let r;
@@ -200,13 +209,16 @@ function projectDir(s, worktreePath) {
   if (want) { const hit = cands.find((p) => encodeProject(p) === want); if (hit) return hit; }
   return cands[0] || '';
 }
-function shellQuote(v) { return process.platform === 'win32' ? '"' + String(v).replace(/"/g, '""') + '"' : "'" + String(v).replace(/'/g, "'\\''") + "'"; }
-function resumeCommand(s) {
+// 설정 폴더를 붙이는 문법이 셸마다 다르다 (Windows PowerShell 5.1 은 && 를 몰라서 cmd 문법이면 통째로 문법 오류가 난다)
+function resumeCommand(s, shell) {
   const parts = ['claude', '--resume', s.id];
   if (s.permissionMode && s.permissionMode !== 'default') parts.push('--permission-mode', s.permissionMode);
-  let cmd = parts.join(' ');
-  if (s.configDir) cmd = process.platform === 'win32' ? `set "CLAUDE_CONFIG_DIR=${s.configDir}" && ${cmd}` : `CLAUDE_CONFIG_DIR=${shellQuote(s.configDir)} ${cmd}`;
-  return cmd;
+  const cmd = parts.join(' ');
+  if (!s.configDir) return cmd;
+  const dir = String(s.configDir);
+  if (shell === 'powershell') return `$env:CLAUDE_CONFIG_DIR='${dir.replace(/'/g, "''")}'; ${cmd}`;
+  if (shell === 'cmd') return `set "CLAUDE_CONFIG_DIR=${dir}" && ${cmd}`;
+  return `CLAUDE_CONFIG_DIR='${dir.replace(/'/g, "'\\''")}' ${cmd}`;
 }
 function rememberTerminal(sid, handle) {
   const file = path.join(ROOT, 'sessions', String(sid).replace(/[^A-Za-z0-9_-]/g, '_') + '.json');
@@ -231,12 +243,12 @@ function waitAgent(handle) {
 function wakeAndDeliver(s, text) {
   const handle = s.orca && s.orca.terminal;
   const chk = handle ? agentTerminal(handle) : { ok: false, wake: 'gone' };
-  const cmd = resumeCommand(s);
+  const win = process.platform === 'win32';
   let target = '', how = '';
   if (chk.wake === 'shell') {
-    // 그 터미널의 셸에 resume 명령을 친다
+    // 그 터미널의 셸에 resume 명령을 친다 (프롬프트 모양으로 고른 셸 문법으로)
     let r;
-    try { r = orca(['terminal', 'send', '--terminal', handle, '--text', cmd, '--enter'], SEND_MS); } catch (e) {
+    try { r = orca(['terminal', 'send', '--terminal', handle, '--text', resumeCommand(s, chk.shell), '--enter'], SEND_MS); } catch (e) {
       return { ok: false, error: '세션을 깨우지 못했어요: ' + (e.timeout ? 'Orca 가 답하지 않았어요' : String(e.message || e).slice(0, 120)) };
     }
     if (!r || !r.ok) return { ok: false, error: '세션을 깨우지 못했어요: ' + orcaError(r) };
@@ -245,7 +257,10 @@ function wakeAndDeliver(s, text) {
     const dir = projectDir(s, chk.worktreePath);
     if (!dir) return { ok: false, error: '끝난 세션이고 프로젝트 폴더를 이 컴퓨터에서 찾지 못해 깨우지 못했어요' };
     let r;
-    try { r = orca(['terminal', 'create', '--worktree', 'path:' + dir, '--title', s.title || 'Claude Code', '--command', cmd], CREATE_MS); } catch (e) {
+    // Windows 는 새 터미널 셸을 PowerShell 로 정해 두고 그 문법으로 친다 (기본 셸이 무엇이든 같게)
+    const args = ['terminal', 'create', '--worktree', 'path:' + dir, '--title', s.title || 'Claude Code', '--command', resumeCommand(s, win ? 'powershell' : 'posix')];
+    if (win) args.push('--shell', 'powershell.exe');
+    try { r = orca(args, CREATE_MS); } catch (e) {
       return { ok: false, error: '세션을 깨울 터미널을 열지 못했어요: ' + (e.timeout ? 'Orca 가 답하지 않았어요' : String(e.message || e).slice(0, 120)) };
     }
     if (!r || !r.ok) return { ok: false, error: /worktree|not.?found|unknown/i.test(JSON.stringify((r && r.error) || '')) ? '세션을 깨우려면 그 폴더가 Orca 에 프로젝트로 등록돼 있어야 해요' : '세션을 깨우지 못했어요: ' + orcaError(r) };
