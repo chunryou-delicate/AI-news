@@ -121,10 +121,27 @@ function agentTerminal(handle) {
   }
   const t = info.result && (info.result.terminal || info.result);
   if (!t || t.handle !== handle) return { ok: false, error: '그 세션 터미널이 지금 열려 있지 않아요' };
-  if (!t.agentIdentity || t.connected === false || t.writable === false) {
+  if (t.connected === false || t.writable === false) {
+    return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)' };
+  }
+  // Orca 의 agentIdentity 는 같은 터미널인데도 호출마다 붙었다 빠졌다 한다 (탭이 안 보일 때 등).
+  // 빠져 있으면 터미널 목록과 화면 미리보기(Claude Code 입력줄)로 한 번 더 확인하고, 셋 다 아니라고 할 때만 거른다.
+  if (!t.agentIdentity && !listedAgent(handle) && !previewLooksLikeAgent(t.preview)) {
     return { ok: false, error: '그 터미널에 에이전트가 돌고 있지 않아서 넣지 않았어요 (셸에 명령으로 들어가지 않게)' };
   }
   return { ok: true };
+}
+function listedAgent(handle) {
+  let r;
+  try { r = orca(['terminal', 'list'], SHOW_MS); } catch (_) { return false; }
+  const ts = (r && r.ok && r.result && (r.result.terminals || r.result)) || [];
+  const t = Array.isArray(ts) ? ts.find((x) => x && x.handle === handle) : null;
+  return !!(t && t.agentIdentity);
+}
+// Claude Code 가 떠 있으면 화면 아래에 입력줄(❯)과 안내 문구가 있다. 셸 프롬프트에는 없다.
+function previewLooksLikeAgent(preview) {
+  const p = String(preview || '');
+  return /❯/.test(p) && /shift\+tab|bypass permissions|accept edits|plan mode|\? for shortcuts|esc to interrupt|auto-accept|ctrl\+c to/i.test(p);
 }
 function deliverHandle(handle, text) {
   const chk = agentTerminal(handle);
