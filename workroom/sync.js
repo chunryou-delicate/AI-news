@@ -30,6 +30,8 @@ const ERROR_LOG = path.join(ROOT, 'error.log');
 const INBOX_DONE = path.join(ROOT, 'inbox-done.json');      // 다른 컴퓨터에서 받아 넣은 지시 (받음 표시용, 하루 보관)
 const sendMod = require('./send.js');
 const MIN = 60 * 1000;
+const LOCK_MAX = 20 * MIN;      // 이보다 오래된 잠금은 주인이 살아 있어도 멈춘 것으로 보고 치운다
+const GIT_TIMEOUT = 10 * MIN;   // git 명령 하나가 이보다 오래 걸리면 끊는다 (--interactive 는 제외)
 const args = process.argv.slice(2);
 
 function logError(err) {
@@ -63,7 +65,22 @@ function git(cwd, gitArgs, interactive) {
   return execFileSync('git', ['-C', cwd].concat(gitArgs), {
     encoding: 'utf8', windowsHide: true, env, maxBuffer: 64 * 1024 * 1024,
     stdio: ['ignore', 'pipe', interactive ? 'inherit' : 'pipe'],
+    timeout: interactive ? 0 : GIT_TIMEOUT,   // 네트워크가 멈춘 git 이 잠금을 끝없이 쥐고 있지 않게
   });
+}
+
+// 동기화 잠금(sync.lock)에는 잡은 프로세스 번호를 적는다. 느린 컴퓨터에서는 한 번 도는 데 2~6분도 걸리는데,
+// 예전처럼 3분 지난 잠금을 치우면 아직 도는 동기화와 새 동기화가 같은 git 폴더에서 겹쳐
+// 'cannot lock ref', FETCH_HEAD·.lock 오류가 났다. 이제는 주인이 살아 있으면 기다리고,
+// 주인이 죽었거나(재부팅 전 잠금 포함) LOCK_MAX 가 지났을 때만 치운다. server.js 의 syncRunning() 도 같은 규칙.
+function lockOwnerAlive(file) {
+  let st, pid;
+  try { st = fs.statSync(file); } catch (_) { return false; }
+  const age = Date.now() - st.mtimeMs;
+  if (age > LOCK_MAX || age > os.uptime() * 1000) return false;
+  try { pid = parseInt(fs.readFileSync(file, 'utf8'), 10); } catch (_) {}
+  if (!pid) return age < 3 * MIN;   // 번호를 적지 않던 예전 sync.js 의 잠금
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 }
 
 function ensureRepo(dir, repo) {
@@ -332,9 +349,11 @@ function runOnce() {
   if (!cfg || !cfg.repo) return;
   let fd;
   try { fd = fs.openSync(LOCK, 'wx'); } catch (_) {
-    try { if (Date.now() - fs.statSync(LOCK).mtimeMs > 3 * MIN) fs.unlinkSync(LOCK); } catch (__) {}
+    // 아직 도는 동기화가 있으면 그대로 둔다. 주인 없는 잠금만 치우고, 이번 차례는 건너뛴다 (다음 차례에 돈다).
+    if (!lockOwnerAlive(LOCK)) { try { fs.unlinkSync(LOCK); } catch (__) {} }
     return;
   }
+  try { fs.writeSync(fd, String(process.pid)); } catch (_) {}
   const interactive = args.includes('--interactive');
   const prev = readJson(STATUS_FILE, {});
   const status = { lastRun: Date.now(), ok: true, error: '', machine: cfg.machine || '', lastArchive: prev.lastArchive || 0, archive: prev.archive || '' };
@@ -362,7 +381,8 @@ function runOnce() {
     logError(e);
   } finally {
     try { fs.closeSync(fd); } catch (_) {}
-    try { fs.unlinkSync(LOCK); } catch (_) {}
+    // 너무 오래 걸려 다른 동기화가 잠금을 넘겨받았으면 그쪽 잠금은 지우지 않는다
+    try { const owner = fs.readFileSync(LOCK, 'utf8').trim(); if (!owner || owner === String(process.pid)) fs.unlinkSync(LOCK); } catch (_) {}
   }
   writeAtomic(STATUS_FILE, JSON.stringify(status));
   // 받아 온 것과 동기화 결과를 현황판(state.js, speech.js)에 반영한다.

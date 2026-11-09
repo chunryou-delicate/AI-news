@@ -62,12 +62,26 @@ function links(cfg) {
 
 // 작업 스케줄러나 훅이 한동안 동기화하지 않았으면 서버가 대신 sync.js 를 돌린다.
 // 리눅스처럼 작업 스케줄러(--schedule)가 없는 컴퓨터도 서버만 떠 있으면 다른 컴퓨터 현황이 계속 새로 온다.
+// sync.js 가 아직 돌고 있는지: 잠금(sync.lock)에 적힌 프로세스가 살아 있으면 돌고 있다 (sync.js 의 lockOwnerAlive 와 같은 규칙).
+// lastRun 은 동기화가 끝나야 적히므로, 느린 컴퓨터에서 한 번 도는 동안 30초마다 node 를 또 띄우지 않게 이것도 본다.
+function syncRunning() {
+  const file = path.join(ROOT, 'sync.lock');
+  let st, pid;
+  try { st = fs.statSync(file); } catch (_) { return false; }
+  const age = Date.now() - st.mtimeMs;
+  if (age > 20 * 60 * 1000 || age > os.uptime() * 1000) return false;
+  try { pid = parseInt(fs.readFileSync(file, 'utf8'), 10); } catch (_) {}
+  if (!pid) return age < 3 * 60 * 1000;
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+}
+
 function keepSyncing() {
   const tick = () => {
     const sync = readJson(path.join(ROOT, 'sync.json'), null);
     if (!sync || !sync.repo) return;
     const last = (readJson(path.join(ROOT, 'sync-status.json'), null) || {}).lastRun || 0;
     if (Date.now() - last < (Number(sync.intervalSec) || 60) * 1500) return;
+    if (syncRunning()) return;
     try {
       require('child_process').spawn(process.execPath, [path.join(ROOT, 'sync.js')], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
     } catch (_) {}
