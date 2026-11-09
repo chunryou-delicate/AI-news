@@ -643,6 +643,37 @@
   body.dock-bottom .dock-body { position: fixed; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 60px); transform: translateX(-50%); width: min(560px, calc(100% - 16px)); max-height: min(68vh, 760px); overflow: auto; overscroll-behavior: contain; z-index: 30; padding: 8px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
   body.dock-bottom .min-list, body.dock-bottom .t-day .min-list { max-height: 50vh; }
   @media (pointer: coarse) { body.dock-bottom .office3d { height: 58vh; } }   /* 폰: 3D 도구 막대가 아래 메뉴에 가리지 않게 */
+  /* 전체화면: 3D(또는 평면도)가 화면을 다 쓰고, 메뉴(☰)·패널 탭은 위에 떠 있다가 누르면 팝업으로 열린다. ✕ 나 Esc 로 끝 */
+  .fs-btn { display: none; }
+  body.fs { overflow: hidden; padding-bottom: 0; }
+  body.fs .wrap { max-width: none; padding: 0; }
+  body.fs .layout { display: block; }
+  body.fs .layout > aside { display: block !important; }
+  body.fs .foot, body.fs .side-grip, body.fs .o3-jump, body.fs .dock-pos, body.fs #layoutSeg { display: none !important; }
+  body.fs .stage { position: fixed; inset: 0; z-index: 20; height: auto !important; border-radius: 0; overflow: auto; overscroll-behavior: contain; background: var(--bg); }
+  body.fs:not(.dim3d) .stage { padding: calc(max(10px, env(safe-area-inset-top)) + 56px) 10px 10px; }
+  body.fs .office3d { height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
+  body.fs .fs-btn { display: inline-flex; align-items: center; gap: 6px; position: fixed; top: max(10px, env(safe-area-inset-top)); z-index: 33; height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
+  body.fs .fs-btn:hover { border-color: var(--muted); }
+  body.fs #fsMenu { left: 10px; }
+  body.fs #fsExit { right: 10px; }
+  body.fs #fsMenu[aria-expanded="true"] { background: var(--ink); color: var(--panel); }
+  body.fs .dock { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 270px)); margin: 0; z-index: 31; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
+  body.fs .dock-body { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 56px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 16px)); max-height: calc(100vh - 86px); max-height: calc(100dvh - 86px); overflow: auto; overscroll-behavior: contain; z-index: 30; padding: 8px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
+  body.fs .min-list, body.fs .t-day .min-list { max-height: 50vh; }
+  body.fs .top { display: none; }
+  body.fs.fs-menu .top { display: flex; position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 56px); left: 10px; z-index: 32; width: max-content; max-width: min(760px, calc(100% - 20px)); max-height: calc(100vh - 86px); overflow: auto; margin: 0; padding: 14px 16px; align-items: center; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
+  body.fs #banner:not(:empty) { position: fixed; left: 10px; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 32; max-width: min(520px, calc(100% - 20px)); }
+  body.fs #banner .banner { margin: 0; box-shadow: var(--shadow); }
+  /* 좁은 화면(폰): 위에는 ☰·✕ 만, 패널 탭은 아래 막대, 3D 도구 막대는 그 위로 */
+  @media (max-width: 640px) {
+    body.fs .fs-btn .fs-l { display: none; }
+    body.fs .dock { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); width: calc(100% - 16px); }
+    body.fs .dock-body { top: auto; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 60px); max-height: min(68vh, calc(100dvh - 140px)); }
+    body.fs .o3-tools { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); }
+    body.fs:not(.dim3d) .stage { padding-bottom: 80px; }
+    body.fs #banner:not(:empty) { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); }
+  }
   .hire-btn { flex: none; border: 0; background: var(--done); color: #fff; border-radius: 8px; padding: 3px 10px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
   .hire-btn[aria-expanded="true"] { background: var(--ink); color: var(--panel); }
   .hire-box { margin: 8px 8px 2px; }
@@ -842,10 +873,12 @@
       <button type="button" data-view="auto" title="화면 폭에 맞춰서">자동</button><button type="button" data-view="one" title="한 줄에 방 1개씩 크게">크게</button><button type="button" data-view="all" title="한 줄에 방 3개씩 줄여서 한눈에">작게</button>
     </div>
     <div class="layoutseg" id="layoutSeg" role="group" aria-label="화면 배치">
-      <button type="button" data-lay="full" class="wide-only" title="화면 폭을 끝까지 쓰기">꽉 차게</button><button type="button" data-lay="side" class="wide-only" title="오른쪽 패널을 왼쪽으로 옮기기">패널 ⇄</button><button type="button" data-lay="hide" title="오른쪽 패널 숨기기/보이기">패널 숨김</button>
+      <button type="button" data-lay="full" class="wide-only" title="화면 폭을 끝까지 쓰기">꽉 차게</button><button type="button" data-lay="side" class="wide-only" title="오른쪽 패널을 왼쪽으로 옮기기">패널 ⇄</button><button type="button" data-lay="hide" title="오른쪽 패널 숨기기/보이기">패널 숨김</button><button type="button" data-lay="fs" title="3D(평면도)를 화면 전체로 · 메뉴와 패널은 위에 떠서 열려요 · Esc 로 끝">⛶ 전체화면</button>
     </div>
     <button class="theme-btn" id="themeBtn" type="button" aria-label="밝게/어둡게 바꾸기">◐</button>
   </div>
+  <button type="button" class="fs-btn" id="fsMenu" aria-expanded="false" title="상태·2D/3D·테마 메뉴">☰<span class="fs-l"> 메뉴</span></button>
+  <button type="button" class="fs-btn" id="fsExit" title="전체화면 끝내기 (Esc)">✕<span class="fs-l"> 나가기</span></button>
   <div id="banner"></div>
   <div class="layout">
     <main class="stage" id="stage" aria-label="사무실 평면도">
@@ -3470,6 +3503,7 @@
   function markDim() {
     document.querySelectorAll('#dimSeg button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-dim') === dim); });
     document.getElementById('viewSeg').hidden = dim === '3d';
+    document.body.classList.toggle('dim3d', dim === '3d');
     office.hidden = dim === '3d';
     office3dEl.hidden = dim !== '3d';
     document.getElementById('legendHint').textContent = dim === '3d' ? HINT_3D : HINT_2D;
@@ -3629,8 +3663,10 @@
       if (!document.getElementById('fireConfirm').hidden) closeFireConfirm();
       else if (document.getElementById('scrim').classList.contains('open')) closeSheet();
       else if (cardSid) { cardSid = null; renderSpeechCard(); }
-      else if (dock.pos === 'bottom' && !dock.folded) { dock.folded = true; applyDock(true); }   // 아래 메뉴로 열린 패널부터 닫는다
+      else if (fsOn && document.body.classList.contains('fs-menu')) setFsMenu(false);
+      else if ((dock.pos === 'bottom' || fsOn) && !dock.folded) { dock.folded = true; applyDock(true); }   // 아래 메뉴(전체화면이면 떠 있는 메뉴)로 열린 패널부터 닫는다
       else if (zoomRoom) exitRoom();
+      else if (fsOn && !fsElement()) exitFs();   // 브라우저 전체화면을 못 쓴 경우(아이폰 등). 쓴 경우는 Esc 를 브라우저가 받아 fullscreenchange 로 끝난다
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches) {
@@ -3659,7 +3695,7 @@
     document.documentElement.style.setProperty('--side-w', Math.round(lay.w) + 'px');
     document.querySelectorAll('#layoutSeg button').forEach(function (b) {
       var k = b.getAttribute('data-lay');
-      b.classList.toggle('on', k === 'full' ? !!lay.full : k === 'side' ? lay.side === 'left' : !!lay.hide);
+      b.classList.toggle('on', k === 'full' ? !!lay.full : k === 'side' ? lay.side === 'left' : k === 'hide' ? !!lay.hide : false);
     });
     if (save) {
       try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(lay)); } catch (_) {}
@@ -3680,7 +3716,7 @@
     var aside = document.querySelector('aside.side');
     aside.setAttribute('data-tab', dock.tab);
     aside.classList.toggle('folded', !!dock.folded);
-    document.body.classList.toggle('dock-bottom', dock.pos === 'bottom');
+    document.body.classList.toggle('dock-bottom', dock.pos === 'bottom' && !fsOn);
     document.querySelectorAll('#dock .dock-tab').forEach(function (b) {
       var on = !dock.folded && b.getAttribute('data-tab') === dock.tab;
       b.classList.toggle('on', on);
@@ -3700,6 +3736,7 @@
   document.getElementById('dock').addEventListener('click', function (e) {
     var b = e.target.closest('.dock-tab');
     if (b) {
+      setFsMenu(false);
       var tab = b.getAttribute('data-tab');
       if (tab === dock.tab && !dock.folded) { dock.folded = true; applyDock(true); }
       else openTab(tab);
@@ -3719,6 +3756,7 @@
     var b = e.target.closest('button[data-lay]');
     if (!b) return;
     var k = b.getAttribute('data-lay');
+    if (k === 'fs') { enterFs(); return; }
     if (k === 'full') lay.full = !lay.full;
     else if (k === 'side') { lay.side = lay.side === 'left' ? 'right' : 'left'; lay.hide = false; }
     else lay.hide = !lay.hide;
@@ -3742,6 +3780,52 @@
     grip.addEventListener('pointerup', end);
     grip.addEventListener('pointercancel', end);
   })();
+
+  // ---------- 전체화면: 3D(평면도)가 화면을 다 쓰고, 메뉴(☰)·패널 탭은 떠 있다가 팝업으로 열린다 ----------
+  // 브라우저 전체화면(주소창까지 숨김)을 함께 켠다. 그게 안 되는 브라우저(아이폰 등)는 창 안에서만 꽉 채운다.
+  // 패널은 접힌 채로 시작하고, 끝내면 들어오기 전 상태로 돌아간다. 새로고침하면 끝난 상태로 열린다(브라우저가 누른 뒤에만 허락).
+  var fsOn = false, fsByApi = false, fsPrevFolded = null;
+  function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+  function setFsMenu(open) {
+    open = !!open && fsOn;
+    document.body.classList.toggle('fs-menu', open);
+    document.getElementById('fsMenu').setAttribute('aria-expanded', String(open));
+  }
+  function setFs(on) {
+    if (on === fsOn) return;
+    fsOn = on;
+    document.body.classList.toggle('fs', on);
+    setFsMenu(false);
+    if (on) { fsPrevFolded = !!dock.folded; dock.folded = true; applyDock(false); }
+    else { if (fsPrevFolded !== null) dock.folded = fsPrevFolded; fsPrevFolded = null; applyDock(true); }
+    window.dispatchEvent(new Event('resize'));
+  }
+  function enterFs() {
+    setFs(true);
+    var d = document.documentElement, req = d.requestFullscreen || d.webkitRequestFullscreen;
+    if (!req || fsElement()) return;
+    try { var p = req.call(d, { navigationUI: 'hide' }); if (p && p.catch) p.catch(function () {}); } catch (_) {}
+  }
+  function exitFs() {
+    var ex = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fsElement() && ex) { try { var p = ex.call(document); if (p && p.catch) p.catch(function () {}); } catch (_) {} }
+    fsByApi = false;
+    setFs(false);
+  }
+  function onFsChange() {
+    if (fsElement()) { fsByApi = true; return; }
+    if (fsByApi) { fsByApi = false; setFs(false); }   // Esc 나 브라우저 단추로 전체화면이 끝났을 때
+  }
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+  document.getElementById('fsExit').addEventListener('click', exitFs);
+  document.getElementById('fsMenu').addEventListener('click', function () {
+    var open = !document.body.classList.contains('fs-menu');
+    if (open && !dock.folded) { dock.folded = true; applyDock(true); }   // 메뉴와 패널이 겹치지 않게 하나만
+    setFsMenu(open);
+  });
+  // 메뉴를 연 채로 사무실을 누르면 메뉴는 닫는다 (패널은 그대로: 보면서 쓰는 일이 많다)
+  document.getElementById('stage').addEventListener('pointerdown', function () { if (fsOn) setFsMenu(false); });
 
   var themeKey = 'workroom-theme';
   function applyTheme(t) { if (t) document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme'); }
