@@ -661,13 +661,67 @@
   body.fs .dock { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 270px)); margin: 0; z-index: 31; box-shadow: 0 8px 28px rgba(0, 0, 0, .35); }
   body.fs .dock-body { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 56px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 16px)); max-height: calc(100vh - 86px); max-height: calc(100dvh - 86px); overflow: auto; overscroll-behavior: contain; z-index: 30; padding: 8px; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
   body.fs .min-list, body.fs .t-day .min-list { max-height: 50vh; }
-  body.fs .top { display: none; }
-  body.fs.fs-menu .top { display: flex; position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 56px); left: 10px; z-index: 32; width: max-content; max-width: min(760px, calc(100% - 20px)); max-height: calc(100vh - 86px); overflow: auto; margin: 0; padding: 14px 16px; align-items: center; border-radius: 14px; background: var(--bg); border: 1px solid var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
+  /* 상태 칸(제목·칩·2D/3D·밝기): PC 는 왼쪽 위에 작고 반투명하게 늘 떠 있다(가리키면 진해짐). 폰은 ☰ 를 눌러야 팝업으로 (아래 @media) */
+  body.fs #fsMenu { display: none; }
+  body.fs .top { display: flex; position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; z-index: 32; width: max-content; max-width: max(300px, calc((50vw - 300px) / .8)); margin: 0; padding: 10px 14px; gap: 8px 12px; align-items: center; border-radius: 14px; background: color-mix(in srgb, var(--bg) 60%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); box-shadow: 0 6px 20px rgba(0, 0, 0, .16); transform: scale(.8); transform-origin: 0 0; opacity: .8; transition: opacity .15s, background-color .15s; }
+  body.fs .top:hover, body.fs .top:focus-within { opacity: 1; background: color-mix(in srgb, var(--bg) 94%, transparent); }
+  body.fs .top .brand h1 { font-size: 18px; }
+  /* PC: 탭 막대와 패널 창은 끌어서 옮긴다 (자리는 이 브라우저에 기억). 창 맨 위 띠를 잡고 끈다 */
+  .fs-win-bar { display: none; }
+  body.fs .fs-win-bar { display: flex; align-items: center; gap: 8px; position: sticky; top: -8px; z-index: 3; margin: -8px -8px -4px; padding: 6px 6px 6px 12px; background: var(--bg); border-bottom: 1px solid var(--line); border-radius: 14px 14px 0 0; font-size: 12.5px; font-weight: 700; color: var(--muted); user-select: none; -webkit-user-select: none; }
+  body.fs .fs-win-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.fs .fs-win-x { flex: none; width: 30px; height: 26px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; }
+  body.fs .fs-win-x:hover { background: var(--panel-2); color: var(--ink); }
+  @media (min-width: 641px) {
+    body.fs .dock, body.fs .fs-win-bar { cursor: grab; touch-action: none; }
+    body.fs .dock .dock-tab { cursor: pointer; }
+    body.fs .fs-win-bar .fs-win-t::before { content: "⠿ "; opacity: .7; }
+    body.fs .fs-dragging, body.fs .fs-dragging .fs-win-bar { cursor: grabbing; }
+    body.fs .dock.fs-dragging { box-shadow: 0 14px 40px rgba(0, 0, 0, .45); }
+    /* 크기: 오른쪽 아래 모서리를 끈다. 창은 가로·세로, 탭 막대는 가로만 */
+    body.fs .dock-body { resize: both; min-width: 300px; min-height: 160px; max-width: calc(100vw - 16px); }
+    body.fs .dock { resize: horizontal; overflow: hidden; min-width: 260px; max-width: calc(100vw - 20px); }
+  }
+  /* 메뉴 하나로: 전체화면(PC 폭)에서는 탭 막대에 3D 도구·2D/3D·밝기·나가기까지 모은다 (fsArrange 가 옮겨 넣고, 끝내면 제자리로) */
+  .fs-grp, .fs-sum { display: none; }
+  body.fs .fs-sum { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 5px 0 0; font-size: 12.5px; color: var(--muted); }
+  body.fs .fs-sum span { white-space: nowrap; }
+  body.fs .fs-sum i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 1px; }
+  body.fs .fs-sum b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  body.fs .fs-sum .hot, body.fs .fs-sum .hot b, body.fs .fs-sum em { color: var(--approval); font-weight: 700; font-style: normal; }
+  /* 거르기 칩(승인 대기·질문·완료 보고·막힘)은 확인할 일 탭 맨 위로. 숫자만 있는 칩은 제목 칸 요약에 있으니 뺀다 */
+  body.fs .card > #chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
+  body.fs .card > #chips span.chip { display: none; }
+  body.fs .card > #chips .chip { font-size: 12px; padding: 3px 9px; }
+  @media (min-width: 641px) {
+    /* 처음 자리: 메뉴 막대와 창은 오른쪽 위 (왼쪽 위 제목 칸과 안 겹치게). 끌어 옮기면 그 자리를 기억 */
+    body.fs .dock { container-type: normal; width: max-content; flex-wrap: wrap; align-items: center; left: auto; right: 10px; transform: none; }
+    body.fs .dock-body { left: auto; right: 10px; transform: none; }
+    body.fs .top { max-width: max(300px, calc((100vw - 960px) / .8)); }
+    body.fs .dock .dock-tab { flex: none; padding: 8px 11px; }
+    body.fs .dock .dock-tab .tl-long { display: none; }
+    body.fs .dock .dock-tab .tl-short { display: inline; }
+    body.fs .fs-grp:not(:empty) { display: flex; flex: none; align-items: center; gap: 6px; padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--line); }
+    body.fs:not(.dim3d) #fsGrpTools { display: none; }
+    body.fs #fsGrpTools .o3-tools { position: static; transform: none; background: transparent; padding: 0; max-width: none; z-index: auto; gap: 1px; }
+    body.fs #fsGrpTools .o3-tools button { color: var(--ink); height: 32px; }
+    body.fs #fsGrpTools .o3-tools button:hover { background: var(--panel-2); }
+    body.fs #fsGrpTools .o3-tools button[aria-pressed="true"], body.fs #fsGrpTools .o3-tools button[aria-expanded="true"] { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+    body.fs #fsGrpView .fs-btn { position: static; height: 32px; padding: 0 10px; box-shadow: none; border-radius: 9px; }
+    body.fs #fsGrpView .viewseg button { padding: 5px 10px; }
+  }
+  body.fs .fs-win-reset { flex: none; height: 26px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+  body.fs .fs-win-reset:hover { background: var(--panel-2); color: var(--ink); }
+  @media (max-width: 640px) { body.fs .fs-win-reset { display: none; } }
   body.fs #banner:not(:empty) { position: fixed; left: 10px; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 32; max-width: min(520px, calc(100% - 20px)); }
   body.fs #banner .banner { margin: 0; box-shadow: var(--shadow); }
   /* 좁은 화면(폰): 위에는 ☰·✕ 만, 패널 탭은 아래 막대, 3D 도구 막대는 그 위로 */
   @media (max-width: 640px) {
     body.fs .fs-btn .fs-l { display: none; }
+    body.fs #fsMenu { display: inline-flex; }
+    body.fs .top { display: none; transform: none; opacity: 1; }
+    body.fs.fs-menu .top { display: flex; top: calc(max(10px, env(safe-area-inset-top)) + 56px); max-width: calc(100% - 20px); max-height: calc(100dvh - 86px); overflow: auto; padding: 14px 16px; background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--line); box-shadow: 0 14px 44px rgba(0, 0, 0, .42); }
+    body.fs .top .brand h1 { font-size: 22px; }
     body.fs .dock { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); width: calc(100% - 16px); }
     body.fs .dock-body { top: auto; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 60px); max-height: min(68vh, calc(100dvh - 140px)); }
     body.fs .o3-tools { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 62px); }
@@ -864,6 +918,7 @@
     <div class="brand">
       <h1><span class="live off" id="live"></span>업무방 현황판<span class="share-badge">공유 보기 · 읽기 전용</span></h1>
       <p id="sub">기록을 불러오는 중…</p>
+      <p class="fs-sum" id="fsSum"></p>
     </div>
     <div class="chips" id="chips"></div>
     <div class="viewseg" id="dimSeg" role="group" aria-label="평면도/3D">
@@ -896,8 +951,10 @@
         <button type="button" class="dock-tab" data-tab="board" role="tab">일감<b id="dockBoardN"></b></button>
         <button type="button" class="dock-tab" data-tab="report" role="tab">보고<b id="dockReportN"></b></button>
         <button type="button" class="dock-pos" id="dockPos"></button>
+        <span class="fs-grp" id="fsGrpTools"></span><span class="fs-grp" id="fsGrpView"></span>
       </nav>
       <div class="side dock-body" id="dockBody">
+      <div class="fs-win-bar" id="fsWinBar"><span class="fs-win-t" id="fsWinT"></span><button type="button" class="fs-win-reset" id="fsWinReset" title="탭 막대와 이 창의 자리·크기를 처음대로">⟲ 처음대로</button><button type="button" class="fs-win-x" id="fsWinX" title="닫기 (탭을 다시 눌러도 돼요)">✕</button></div>
       <div class="side" id="sideDefault">
         <section class="card" data-pane="todo">
           <h2><button type="button" class="fold-h" data-fold="card:todo" aria-expanded="true">확인할 일 <span class="n" id="todoN"></span></button></h2>
@@ -1938,6 +1995,10 @@
       ['', '빈 방', (roomTotal - Object.keys(used).length) + '/' + roomTotal, 'var(--idle)']
     ];
     if (todoFilter && !cats[todoFilter].length) todoFilter = '';
+    // 전체화면 제목 칸에 쓰는 작은 글자 요약 (칩 대신)
+    document.getElementById('fsSum').innerHTML = chips.map(function (c) {
+      return '<span' + (c[4] ? ' class="hot"' : '') + '><i style="background:' + c[3] + '"></i>' + c[1] + ' <b>' + c[2] + '</b>' + (c[5] ? ' <em>방치 ' + c[5] + '</em>' : '') + '</span>';
+    }).join('');
     document.getElementById('chips').innerHTML = chips.map(function (c) {
       var inner = '<span class="dot" style="background:' + c[3] + '"></span>' + c[1] + ' <b>' + c[2] + '</b>' +
         (c[5] ? '<span class="chip-old" title="한 시간 넘게 그대로인 것">방치 ' + c[5] + '</span>' : '');
@@ -3723,6 +3784,9 @@
       b.setAttribute('aria-selected', String(on));
       b.title = on ? '다시 누르면 접혀요' : '';
     });
+    var wt = document.getElementById('fsWinT');
+    if (wt) wt.textContent = { todo: '확인할 일', staff: '직원', minutes: '회의록', board: '일감', report: '보고' }[dock.tab] || '';
+    placeFs();
     var p = document.getElementById('dockPos');
     p.textContent = dock.pos === 'bottom' ? '⤒' : '⤓';
     p.title = dock.pos === 'bottom' ? '메뉴를 패널 맨 위로 옮기기' : '메뉴를 화면 아래 막대로 옮기기';
@@ -3796,6 +3860,7 @@
     fsOn = on;
     document.body.classList.toggle('fs', on);
     setFsMenu(false);
+    fsArrange();
     if (on) { fsPrevFolded = !!dock.folded; dock.folded = true; applyDock(false); }
     else { if (fsPrevFolded !== null) dock.folded = fsPrevFolded; fsPrevFolded = null; applyDock(true); }
     window.dispatchEvent(new Event('resize'));
@@ -3826,6 +3891,158 @@
   });
   // 메뉴를 연 채로 사무실을 누르면 메뉴는 닫는다 (패널은 그대로: 보면서 쓰는 일이 많다)
   document.getElementById('stage').addEventListener('pointerdown', function () { if (fsOn) setFsMenu(false); });
+  document.getElementById('fsWinX').addEventListener('click', function () { dock.folded = true; applyDock(true); });
+
+  // 메뉴 하나로: 전체화면에서 거르기 칩은 확인할 일 탭 맨 위로, PC 폭이면 3D 도구·2D/3D·밝기·나가기를 탭 막대 안으로 옮긴다.
+  // 단추에 붙은 동작은 단추 자체에 걸려 있어서(또는 문서 전체에서 받아서) 옮겨도 그대로 된다. 끝내거나 폰 폭이 되면 제자리로 돌린다.
+  var fsHome = [], fsArrangedWide = null;
+  function fsWide() { return window.matchMedia('(min-width: 641px)').matches; }
+  function fsMove(el, to, before) {
+    if (!el || !to || el.parentNode === to) return;
+    fsHome.push({ el: el, parent: el.parentNode, next: el.nextSibling });
+    to.insertBefore(el, before || null);
+  }
+  function fsArrange() {
+    while (fsHome.length) {   // 거꾸로 돌려놔야 '다음 형제'가 제자리에 있다
+      var h = fsHome.pop();
+      if (h.parent) h.parent.insertBefore(h.el, h.next && h.next.parentNode === h.parent ? h.next : null);
+    }
+    fsArrangedWide = null;
+    if (!fsOn) return;
+    var todoCard = document.getElementById('todo').closest('.card');
+    fsMove(document.getElementById('chips'), todoCard, document.getElementById('todoBar'));
+    fsArrangedWide = fsWide();
+    if (!fsArrangedWide) return;
+    fsMove(document.querySelector('#office3d > .o3-tools'), document.getElementById('fsGrpTools'));
+    var gv = document.getElementById('fsGrpView');
+    ['dimSeg', 'viewSeg', 'themeBtn', 'fsExit'].forEach(function (id) { fsMove(document.getElementById(id), gv); });
+  }
+  // 3D 가 전체화면 중에 처음 뜨면 도구 막대가 그때 생긴다 → 막대 안으로
+  if (window.MutationObserver) new MutationObserver(function () {
+    if (fsOn && fsArrangedWide && document.querySelector('#office3d > .o3-tools')) fsArrange();
+  }).observe(document.getElementById('office3d'), { childList: true });
+  window.addEventListener('resize', function () { if (fsOn && fsWide() !== fsArrangedWide) fsArrange(); });
+
+  // 전체화면(PC 폭)에서 탭 막대·패널 창을 끌어서 옮긴다. 자리는 이 브라우저에 기억하고, 화면 밖으로는 못 나가게 한다.
+  // 탭 막대는 어디를 잡아도 되고(6px 넘게 움직여야 끌기, 아니면 그냥 누르기), 창은 맨 위 띠를 잡는다.
+  // 창을 따로 옮긴 적이 없으면 막대 바로 아래에 열린다.
+  var FSPOS_KEY = 'workroom-fs-pos';
+  var fsPos = {};
+  try { fsPos = JSON.parse(localStorage.getItem(FSPOS_KEY) || '{}') || {}; } catch (_) { fsPos = {}; }
+  function fsDragOK() { return !!fsOn && window.matchMedia('(min-width: 641px)').matches; }
+  function setXY(el, p) {
+    var w = el.offsetWidth, h = el.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    var isWin = el.id === 'dockBody';
+    var x = Math.max(4, Math.min(W - w - 4, p.x)), y = Math.max(4, Math.min(H - (isWin ? 140 : Math.min(h, 56) + 4), p.y));
+    el.style.left = Math.round(x) + 'px';
+    el.style.top = Math.round(y) + 'px';
+    el.style.right = el.style.bottom = 'auto';
+    el.style.transform = 'none';
+    if (isWin) el.style.maxHeight = Math.round(H - y - 10) + 'px';   // 창 아래쪽(크기 손잡이)이 늘 화면 안에 보이게
+  }
+  function placeFs() {
+    var bar = document.getElementById('dock'), win = document.getElementById('dockBody');
+    if (!bar || !win) return;
+    fsPlacing = true;
+    [bar, win].forEach(function (el) { el.style.left = el.style.top = el.style.right = el.style.bottom = el.style.transform = el.style.width = el.style.height = el.style.maxHeight = ''; });
+    if (!fsDragOK() || !fsPos) { fsPlacing = false; return; }
+    if (fsPos.barW) bar.style.width = Math.round(Math.min(fsPos.barW, window.innerWidth - 20)) + 'px';
+    if (fsPos.winW) win.style.width = Math.round(Math.min(fsPos.winW, window.innerWidth - 16)) + 'px';
+    if (fsPos.winH) win.style.height = Math.round(Math.min(fsPos.winH, window.innerHeight - 70)) + 'px';
+    if (fsPos.bar) setXY(bar, fsPos.bar);
+    if (fsPos.win) setXY(win, fsPos.win);
+    else if (fsPos.bar && win.offsetWidth) {
+      // 막대 아래에 연다. 막대를 화면 아래쪽에 두어 아래 자리가 좁으면 위로 연다
+      var b = bar.getBoundingClientRect(), H = window.innerHeight;
+      var below = H - b.bottom - 20, above = b.top - 20;
+      if (below < 320 && above > below) {
+        setXY(win, { x: b.left + b.width / 2 - win.offsetWidth / 2, y: 4 });
+        win.style.maxHeight = Math.round(above) + 'px';
+        win.style.top = Math.round(Math.max(4, b.top - 10 - win.offsetHeight)) + 'px';
+      } else setXY(win, { x: b.left + b.width / 2 - win.offsetWidth / 2, y: b.bottom + 10 });
+    }
+    setTimeout(function () { fsPlacing = false; }, 0);   // 위에서 크기를 넣으며 생긴 ResizeObserver 알림은 사람이 바꾼 게 아니다
+  }
+  var fsPlacing = false;
+  function saveFsPos() { try { localStorage.setItem(FSPOS_KEY, JSON.stringify(fsPos)); } catch (_) {} }
+  // 모서리를 끌어 크기를 바꾸면 브라우저가 width/height 를 붙인다. 그걸 기억해 둔다.
+  // 가운데 정렬(translateX)인 채로 넓히면 양쪽으로 늘어나 모서리가 손을 못 따라오므로, 먼저 지금 자리에 못 박는다.
+  function watchSize(el, key) {
+    if (!window.ResizeObserver) return;
+    var t = null;
+    new ResizeObserver(function () {
+      if (fsPlacing || !fsDragOK() || !el.style.width || !el.offsetWidth) return;
+      var same = key === 'bar' ? Math.abs(el.offsetWidth - (fsPos.barW || 0)) < 2
+        : Math.abs(el.offsetWidth - (fsPos.winW || 0)) < 2 && Math.abs(el.offsetHeight - (fsPos.winH || 0)) < 2;
+      if (same) return;   // 기억해 둔 크기를 다시 넣은 것 (창을 열 때 등)
+      if (el.style.transform !== 'none') {
+        var r = el.getBoundingClientRect();
+        setXY(el, { x: r.left, y: r.top });
+        fsPos[key] = { x: Math.round(r.left), y: Math.round(r.top) };
+      }
+      clearTimeout(t);
+      t = setTimeout(function () {
+        if (key === 'bar') fsPos.barW = el.offsetWidth;
+        else { fsPos.winW = el.offsetWidth; if (el.style.height) fsPos.winH = el.offsetHeight; }
+        saveFsPos();
+      }, 250);
+    }).observe(el);
+  }
+  watchSize(document.getElementById('dock'), 'bar');
+  watchSize(document.getElementById('dockBody'), 'win');
+  document.getElementById('fsWinReset').addEventListener('click', function () {
+    fsPos = {};
+    saveFsPos();
+    placeFs();
+  });
+  // 움직임은 문서 전체에서 받는다 (빨리 끌어 손이 막대 밖으로 먼저 나가도 따라오게).
+  // 누르자마자 붙잡으면(capture) 탭 click 이 막대로 가 버리므로, 6px 넘게 움직인 뒤에야 붙잡는다.
+  function dragFs(el, key, canStart) {
+    var st = null;
+    el.addEventListener('pointerdown', function (e) {
+      if (!fsDragOK() || e.button !== 0 || !canStart(e)) return;
+      var r = el.getBoundingClientRect();
+      st = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: r.left, y: r.top, moved: false };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    });
+    function move(e) {
+      if (!st || e.pointerId !== st.id) return;
+      var dx = e.clientX - st.sx, dy = e.clientY - st.sy;
+      if (!st.moved) {
+        if (Math.abs(dx) + Math.abs(dy) < 6) return;
+        st.moved = true;
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+        el.classList.add('fs-dragging');
+      }
+      setXY(el, { x: st.x + dx, y: st.y + dy });
+      e.preventDefault();
+    }
+    function end(e) {
+      if (!st || (e && e.pointerId !== st.id)) return;
+      var moved = st.moved;
+      st = null;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', end);
+      document.removeEventListener('pointercancel', end);
+      el.classList.remove('fs-dragging');
+      if (!moved) return;
+      var r = el.getBoundingClientRect();
+      fsPos[key] = { x: Math.round(r.left), y: Math.round(r.top) };
+      saveFsPos();
+      if (key === 'bar' && !fsPos.win) placeFs();   // 창을 따로 옮긴 적 없으면 막대를 따라온다
+      // 끈 직후의 click 은 탭을 누른 게 아니다
+      var swallow = function (ev) { ev.stopPropagation(); ev.preventDefault(); };
+      el.addEventListener('click', swallow, true);
+      setTimeout(function () { el.removeEventListener('click', swallow, true); }, 0);
+    }
+  }
+  // 오른쪽 아래 모서리(크기 손잡이)를 잡으면 옮기지 않는다
+  function onGrip(el, e) { var r = el.getBoundingClientRect(); return e.clientX > r.right - 18 && e.clientY > r.bottom - 18; }
+  dragFs(document.getElementById('dock'), 'bar', function (e) { return !onGrip(document.getElementById('dock'), e); });
+  dragFs(document.getElementById('dockBody'), 'win', function (e) { return !!e.target.closest('#fsWinBar') && !e.target.closest('#fsWinX, #fsWinReset'); });
+  window.addEventListener('resize', function () { if (fsOn) placeFs(); });
 
   var themeKey = 'workroom-theme';
   function applyTheme(t) { if (t) document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme'); }
