@@ -322,3 +322,7 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
 - `roles[].state`: waiting, working, done, error 중 하나
 - 역할은 `terminal`(Orca 워커 handle), `paneKey`, `tabId`, `sessionId` 중 하나로 실제 세션과 짝지어요
 - 회의가 끝나면 `round`를 `done`으로 두거나 파일을 지워요
+
+## ChatGPT 연동 (시험 단계)
+
+ChatGPT가 외부 대화 참여자로서 기존 GitHub 세션 간 통신에 참여하는 설계와 승인·수신확인 절차는 [CHATGPT-INTEGRATION.md](CHATGPT-INTEGRATION.md)에 정리했습니다. 문서 작성만으로 자동 연결되거나 승인 절차가 생략되지는 않습니다.
