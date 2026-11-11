@@ -4,6 +4,8 @@
 // - pull: 다른 컴퓨터 브랜치들을 받아 remote/<컴퓨터키>/ 에 풀고, 현황판이 읽는 logs/*.js 를 만든다.
 // - 지시 보내기(send.js): 다른 컴퓨터 세션에 보낼 지시는 send/<받을 컴퓨터 키>/ 로 올리고, 받은 컴퓨터는 Orca 로 넣은 뒤
 //   receipts/ 에 받음 표시를 올린다. 받지 않으려면 sync.json 에 "acceptSend": false.
+// - 컴퓨터가 아닌 참여자(ChatGPT 등)도 m/<아무 이름> 브랜치에 send/ 만 올려 지시 글을 보낼 수 있다 (state.json 없음 = 참여자).
+//   지시 글만 받고 앞에 "[보낸 곳 에서 온 지시]" 를 붙인다. 닫기·고용·이름 바꾸기는 거절. CHATGPT-INTEGRATION.md
 // 설정: sync.json  { "repo": "...git", "machine": "회사 노트북", "push": true, "pull": false, "intervalSec": 60 }
 // 사용법: node sync.js             지금 한 번 동기화
 //         node sync.js --defer     (훅이 부름) 마지막 동기화 후 intervalSec 이 지나면 한 번 동기화
@@ -174,13 +176,14 @@ function pullOthers(cfg, interactive) {
   for (const key of keys) {
     if (key === own) continue;
     const ref = `refs/remotes/origin/m/${key}`;
-    let meta;
-    let state;
-    try {
-      meta = JSON.parse(git(IN_DIR, ['show', `${ref}:meta.json`]));
-      state = JSON.parse(git(IN_DIR, ['show', `${ref}:state.json`]));
-    } catch (e) {
-      logError(e);
+    let meta = null;
+    let state = null;
+    try { meta = JSON.parse(git(IN_DIR, ['show', `${ref}:meta.json`])); } catch (_) {}
+    try { state = JSON.parse(git(IN_DIR, ['show', `${ref}:state.json`])); } catch (_) {}
+    if (!meta || !meta.machine || !state) {
+      // 컴퓨터가 아닌 참여자(ChatGPT 등)의 브랜치: 컴퓨터는 늘 meta.json 과 state.json 을 같이 올린다.
+      // 현황판에 컴퓨터로 띄우지 않고, 이 컴퓨터로 온 지시 글만 받는다 (닫기·고용·이름 바꾸기는 거절). CHATGPT-INTEGRATION.md
+      receiveSends(cfg, own, ref, { machine: externalName(meta, key), external: true });
       continue;
     }
     const dir = path.join(REMOTE_DIR, key);
@@ -244,7 +247,13 @@ function mergeSends(items) {
   return parts;
 }
 
+// 컴퓨터가 아닌 참여자 이름: meta.json 의 machine (예: "ChatGPT"), 없으면 브랜치 이름
+function externalName(meta, key) {
+  return sendMod.cleanText((meta && meta.machine) || `m/${key}`).slice(0, 30) || `m/${key}`;
+}
+
 // 다른 컴퓨터 브랜치에서: 이 컴퓨터로 온 지시를 넣고(두 시간 안에 보낸 것만, 한 번씩), 이 컴퓨터가 보낸 지시의 받음 표시를 확인한다.
+// meta.external 이면 컴퓨터가 아닌 참여자(ChatGPT 등): 지시 글만 받고, 받은 세션이 사용자가 친 말로 알지 않게 앞에 보낸 곳을 붙인다.
 function receiveSends(cfg, own, ref, meta) {
   const list = (prefix) => {
     try { return git(IN_DIR, ['ls-tree', '-r', '--name-only', ref, prefix]).split('\n').map((x) => x.trim()).filter((x) => x.endsWith('.json')); } catch (_) { return []; }
@@ -258,7 +267,9 @@ function receiveSends(cfg, own, ref, meta) {
     for (const f of list(`send/${own}/`)) {
       let m;
       try { m = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
-      if (m && m.id && !done[m.id]) fresh.push(m);
+      if (!m || !m.id || done[m.id]) continue;
+      if (meta.external && sendMod.cleanText(m.text)) m = Object.assign({}, m, { text: `[${meta.machine} 에서 온 지시] ${m.text}` });
+      fresh.push(m);
     }
     fresh.sort((a, b) => (a.at || 0) - (b.at || 0));
     const groups = [];
@@ -271,6 +282,7 @@ function receiveSends(cfg, own, ref, meta) {
       const res = {}, ok = [];
       for (const m of g.items) {
         if (cfg.acceptSend === false) res[m.id] = { ok: false, error: '이 컴퓨터는 다른 컴퓨터 지시를 받지 않게 해 두었어요' };
+        else if (meta.external && m.kind && m.kind !== 'send') res[m.id] = { ok: false, error: '컴퓨터가 아닌 참여자는 지시 글만 보낼 수 있어요 (닫기·고용·이름 바꾸기는 받지 않아요)' };
         else if (Date.now() - (m.at || 0) > 2 * 3600 * 1000) res[m.id] = { ok: false, error: '너무 늦게 받아서 넣지 않았어요' };
         else ok.push(m);
       }
@@ -285,12 +297,13 @@ function receiveSends(cfg, own, ref, meta) {
       for (const m of g.items) {
         const r = res[m.id];
         if (r.ok && m.kind === 'close') closedAny = true;
-        done[m.id] = { ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid, merged: r.merged || 0 };
+        done[m.id] = Object.assign({ ok: !!r.ok, error: r.error || '', at: Date.now(), from: meta.machine, sid: m.sid, merged: r.merged || 0 }, meta.external ? { external: true } : {});
         changed = true;
       }
     }
   }
-  for (const f of list('receipts/')) {
+  // 받음 표시는 컴퓨터 브랜치에서만 믿는다 (참여자 브랜치는 이 컴퓨터가 보낸 지시를 받지 않는다)
+  if (!meta.external) for (const f of list('receipts/')) {
     let rc;
     try { rc = JSON.parse(git(IN_DIR, ['show', `${ref}:${f}`])); } catch (_) { continue; }
     if (rc && rc.id) sendMod.applyReceipt(rc, meta.machine);
