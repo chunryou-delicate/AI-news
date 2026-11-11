@@ -4,7 +4,8 @@
 // - pull: 다른 컴퓨터 브랜치들을 받아 remote/<컴퓨터키>/ 에 풀고, 현황판이 읽는 logs/*.js 를 만든다.
 // - 지시 보내기(send.js): 다른 컴퓨터 세션에 보낼 지시는 send/<받을 컴퓨터 키>/ 로 올리고, 받은 컴퓨터는 Orca 로 넣은 뒤
 //   receipts/ 에 받음 표시를 올린다. 받지 않으려면 sync.json 에 "acceptSend": false.
-// - 컴퓨터가 아닌 참여자(ChatGPT 등)도 m/<아무 이름> 브랜치에 send/ 만 올려 지시 글을 보낼 수 있다 (state.json 없음 = 참여자).
+// - 컴퓨터가 아닌 참여자(ChatGPT 등)도 m/<아무 이름> 브랜치에 send/ 를 올려 지시 글을 보낼 수 있다
+//   (sync.js 가 workroom@localhost 로 커밋한 브랜치만 컴퓨터, 나머지는 참여자).
 //   지시 글만 받고 앞에 "[보낸 곳 에서 온 지시]" 를 붙인다. 닫기·고용·이름 바꾸기는 거절. CHATGPT-INTEGRATION.md
 // 설정: sync.json  { "repo": "...git", "machine": "회사 노트북", "push": true, "pull": false, "intervalSec": 60 }
 // 사용법: node sync.js             지금 한 번 동기화
@@ -31,6 +32,7 @@ const ARCHIVE_REQ = path.join(ROOT, 'archive.request');     // 회의가 끝나�
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const INBOX_DONE = path.join(ROOT, 'inbox-done.json');      // 다른 컴퓨터에서 받아 넣은 지시 (받음 표시용, 하루 보관)
 const sendMod = require('./send.js');
+const COMPUTER_EMAIL = 'workroom@localhost';               // 컴퓨터 브랜치(m/<키>) 커밋 작성자. 이게 아니면 참여자 브랜치로 다룬다
 const MIN = 60 * 1000;
 const LOCK_MAX = 20 * MIN;      // 이보다 오래된 잠금은 주인이 살아 있어도 멈춘 것으로 보고 치운다
 const GIT_TIMEOUT = 10 * MIN;   // git 명령 하나가 이보다 오래 걸리면 끊는다 (--interactive 는 제외)
@@ -150,7 +152,7 @@ function pushSnapshot(cfg, interactive) {
   git(OUT_DIR, ['add', '-A']);
   let hasHead = true;
   try { git(OUT_DIR, ['rev-parse', '--verify', '-q', 'HEAD']); } catch (_) { hasHead = false; }
-  const commit = ['-c', 'user.name=workroom', '-c', 'user.email=workroom@localhost', 'commit', '-q', '--allow-empty', '-m', `snapshot ${cfg.machine} ${new Date().toISOString()}`];
+  const commit = ['-c', 'user.name=workroom', '-c', `user.email=${COMPUTER_EMAIL}`, 'commit', '-q', '--allow-empty', '-m', `snapshot ${cfg.machine} ${new Date().toISOString()}`];
   if (hasHead) commit.push('--amend');
   git(OUT_DIR, commit);
   git(OUT_DIR, ['push', '-q', '-f', 'origin', `HEAD:refs/heads/m/${key}`], interactive);
@@ -169,7 +171,7 @@ function pullOthers(cfg, interactive) {
   if (wanted.length) {
     git(IN_DIR, ['fetch', '-q', '--depth', '1', 'origin'].concat(wanted.map((k) => `+refs/heads/m/${k}:refs/remotes/origin/m/${k}`)), interactive);
   }
-  const pulled = [];
+  const pulled = [], computers = [];
   fs.mkdirSync(REMOTE_DIR, { recursive: true });
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 
@@ -180,12 +182,16 @@ function pullOthers(cfg, interactive) {
     let state = null;
     try { meta = JSON.parse(git(IN_DIR, ['show', `${ref}:meta.json`])); } catch (_) {}
     try { state = JSON.parse(git(IN_DIR, ['show', `${ref}:state.json`])); } catch (_) {}
-    if (!meta || !meta.machine || !state) {
-      // 컴퓨터가 아닌 참여자(ChatGPT 등)의 브랜치: 컴퓨터는 늘 meta.json 과 state.json 을 같이 올린다.
+    let author = '';
+    try { author = git(IN_DIR, ['log', '-1', '--format=%ae', ref]).trim(); } catch (_) {}
+    if (!meta || !meta.machine || !state || author !== COMPUTER_EMAIL) {
+      // 컴퓨터가 아닌 참여자(ChatGPT 등)의 브랜치: 컴퓨터 브랜치는 늘 pushSnapshot 이 COMPUTER_EMAIL 로 커밋하고 meta.json·state.json 을 같이 올린다.
+      // (ChatGPT 는 GitHub 연결로 사용자 계정 커밋을 올리고, meta.json·state.json 을 흉내 내기도 한다)
       // 현황판에 컴퓨터로 띄우지 않고, 이 컴퓨터로 온 지시 글만 받는다 (닫기·고용·이름 바꾸기는 거절). CHATGPT-INTEGRATION.md
       receiveSends(cfg, own, ref, { machine: externalName(meta, key), external: true });
       continue;
     }
+    computers.push(key);
     const dir = path.join(REMOTE_DIR, key);
     fs.mkdirSync(dir, { recursive: true });
     const prevDerived = readJson(path.join(dir, 'derived.json'), []);
@@ -221,9 +227,9 @@ function pullOthers(cfg, interactive) {
     pulled.push({ machine: meta.machine, key, generatedAt: meta.generatedAt });
   }
 
-  // 저장소에서 사라진 컴퓨터는 지운다.
+  // 저장소에서 사라진 컴퓨터와, 컴퓨터가 아닌 참여자 브랜치(예전에 컴퓨터로 받아 둔 것 포함)는 지운다.
   for (const d of fs.readdirSync(REMOTE_DIR)) {
-    if (keys.includes(d) && d !== own) continue;
+    if (computers.includes(d)) continue;
     for (const k of readJson(path.join(REMOTE_DIR, d, 'derived.json'), [])) {
       for (const ext of ['.js', '.speech.json']) try { fs.unlinkSync(path.join(LOGS_DIR, k + ext)); } catch (_) {}
     }
