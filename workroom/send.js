@@ -95,7 +95,12 @@ function orca(args, timeout) {
 }
 function orcaError(r) {
   const e = r && r.error;
-  return (e && (e.message || e.code)) || (typeof e === 'string' ? e : '') || 'Orca 가 받지 못했어요';
+  const raw = (e && (e.message || e.code)) || (typeof e === 'string' ? e : '') || '';
+  // 새 Orca 는 세션 화면에 승인(권한)·신뢰 창이 떠 있으면 글을 넣지 않는다 (지시가 승인 창의 답으로 들어가지 않게)
+  if (/agent_prompt_blocked/i.test(String((e && e.code) || '') + ' ' + raw)) {
+    return '그 세션 화면에 승인 창이 떠 있어서 넣지 않았어요. 지시가 승인 창의 답으로 들어가지 않게 Orca 가 막아요. 그 컴퓨터 Orca 탭(또는 원격 연결)에서 승인 창에 먼저 답한 뒤 다시 보내 주세요';
+  }
+  return raw || 'Orca 가 받지 못했어요';
 }
 
 // 이 컴퓨터 세션 터미널에 바로 넣는다

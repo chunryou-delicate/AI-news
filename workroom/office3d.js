@@ -345,7 +345,7 @@
       renderer.setClearColor(PAL.bg);
       // 조명 설정 (테마, 밝기, 빛 색). 이 브라우저에 기억해 둔다.
       var LOOK_KEY = 'workroom-3d-look';
-      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1, city: !coarse, sky: 'auto' };   // 도시 배경은 폰에서는 처음에 끈다
+      var look = { theme: 'pastel', light: 0.85, warmth: 0.55, ceo: 1, city: !coarse, sky: 'auto', seat: false };   // 도시 배경은 폰에서는 처음에 끈다
       try { Object.assign(look, JSON.parse(localStorage.getItem(LOOK_KEY) || '{}')); } catch (_) {}
       if (!THEMES[look.theme]) look.theme = 'pastel';
       var aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -365,6 +365,7 @@
         '<button type="button" data-a="in" title="확대" aria-label="확대">+</button>' +
         '<button type="button" data-a="grab" title="손: 사람을 끌어 옮겨요. 의자에 놓으면 앉고(다른 방이면 잠깐 앉았다 돌아가요), 그냥 누르면 쓰다듬어요" aria-label="손" aria-pressed="false">✋</button>' +
         '<button type="button" data-a="rollcall" title="점호: 모두 오른쪽 빈 곳에 10열 종대로 모여 대표와 파이팅하고 흩어져요 (다시 누르면 해산)" aria-label="점호" aria-pressed="false">📣</button>' +
+        '<button type="button" data-a="seat" title="착석: 모두 제 자리 의자에 앉아요. 쉼터·승인 줄·발표 자리에 있던 사람도 돌아와 앉아요 (다시 누르면 평소대로)" aria-label="착석" aria-pressed="false">🪑</button>' +
         '<button type="button" data-a="home" class="wide" title="전체 보기">전체</button>' +
         '<button type="button" data-a="look" class="wide" title="사무실 색과 조명 바꾸기" aria-expanded="false">조명</button>' +
         '<button type="button" data-a="city" class="wide" title="건물 아래 거리와 주변 빌딩 (느리면 끄세요)" aria-pressed="false">도시</button>';
@@ -2683,6 +2684,8 @@
         if (!R) return W.elev;
         if (p.worker) return seatSpot(R, p.row, p.seat, 'type');
         var st = p.state;
+        // 착석(🪑)을 켜 두면 승인·답변 대기, 막힘, 회의 발표도 제 자리 의자에 앉는다 (상태는 이름표의 !·? 로 보인다)
+        if (look.seat) return seatSpot(R, p.row, p.seat, st === 'working' ? 'type' : R.kind === 'lounge' ? 'lounge' : 'sit');
         if (st === 'approval' || st === 'question') return queueSpot(slot[p.id] || 0, st === 'question' ? 'ask' : 'raise');
         if (st === 'error') return standSpot(R, p.row, p.seat);
         if (st === 'working') return p.chair && meeting ? boardSpot(R) : seatSpot(R, p.row, p.seat, 'type');
@@ -3008,6 +3011,7 @@
       // 쉬는 세션: 가끔 비어 있는 쉼터(탕비실, 휴게실, 수면실)에 다녀온다.
       // 너무 돌아다니지 않게 한 사람은 15~30분에 한 번, 동시에는 쉬는 사람의 4분의 1까지만 간다. 잠든 사람은 일이 생길 때까지 잔다.
       function tickBreaks(now) {
+        if (look.seat) return;   // 착석 중에는 쉼터에 가지 않는다
         var list = Object.keys(actors).map(function (id) { return actors[id]; });
         var restingN = 0, onBreak = 0;
         list.forEach(function (a) {
@@ -3196,6 +3200,31 @@
           if (now - rc.cheerAt > 4500) endRollCall();
         }
       }
+
+      // ---------- 착석 (도구 막대 🪑) ----------
+      // 켜면 모두 제 자리 의자로 걸어가 앉는다. 쉼터·승인 줄·발표 자리·손으로 옮겨 놓은 곳에 있던 사람도 돌아온다.
+      // 켜 둔 동안은 쉼터에 가지 않는다. 다시 누르면 평소대로(승인 줄 등). 이 브라우저에 기억하고, 이 화면에서만 바뀐다.
+      var seatHintT = 0;
+      function setSeatAll(on) {
+        look.seat = on;
+        saveLook();
+        seatButton();
+        if (on) {
+          if (rc) endRollCall();
+          Object.keys(actors).forEach(function (id) {
+            var a = actors[id];
+            if (a.ceo) return;
+            endBreak(a);
+            a.visit = null;
+          });
+        }
+        if (snap && W) update(snap);   // 자리(base)를 다시 정하면 바뀐 사람은 걸어간다
+        hint.textContent = on ? '🪑 착석! 모두 제 자리로 돌아가 앉아요 · 🪑 다시 누르면 평소대로' : '🪑 착석 끔 · 평소대로 움직여요';
+        hint.classList.remove('fade');
+        clearTimeout(seatHintT);
+        seatHintT = setTimeout(function () { if (!grabMode && !rc) { hint.textContent = hintText; hint.classList.add('fade'); } }, 4000);
+      }
+      function seatButton() { var b = tools.querySelector('[data-a="seat"]'); if (b) b.setAttribute('aria-pressed', String(!!look.seat)); }
 
       // ---------- 재미: 손 흔들기·머리 위 그림 ----------
       function cheer(a, ch, ms) {
@@ -3694,6 +3723,7 @@
         else if (act === 'out') goal.dist = Math.min(Math.max(maxDist, 20), goal.dist * 1.35);
         else if (act === 'home') { if (focus) host.back(); else flyTo(overview()); }
         else if (act === 'rollcall') { if (rc) endRollCall(); else startRollCall(); return; }
+        else if (act === 'seat') { setSeatAll(!look.seat); return; }
         else if (act === 'grab') {
           grabMode = !grabMode;
           b.setAttribute('aria-pressed', String(grabMode));
@@ -3726,6 +3756,7 @@
       function saveLook() { try { localStorage.setItem(LOOK_KEY, JSON.stringify(look)); } catch (_) {} }
       function syncCityBtn() { tools.querySelector('[data-a="city"]').setAttribute('aria-pressed', String(!!look.city)); }
       syncCityBtn();
+      seatButton();
       lookPanel.addEventListener('click', function (e) {
         var cb = e.target.closest('[data-ceo]');
         if (cb) {

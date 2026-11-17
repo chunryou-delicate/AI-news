@@ -749,7 +749,7 @@
   .scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .5); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 40; }   /* 아래 메뉴(31)보다 위 */
   .scrim.open { display: flex; }
   .sheet { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
-  .sheet header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .sheet header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 3; background: var(--panel); border-radius: 14px 14px 0 0; }   /* 아래로 내려도 세션 이름·닫기는 위에 붙어 있게 */
   .sheet header h3 { margin: 0; font-size: 16px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .sheet .close { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
   .sheet dl { margin: 0; padding: 12px 16px 6px; display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; }
