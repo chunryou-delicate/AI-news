@@ -8,6 +8,7 @@
 //         node server.js --open   이 컴퓨터 브라우저로 현황판을 연다 (링크를 화면에 찍지 않음)
 // host 를 "127.0.0.1" 로 두면 이 컴퓨터에서만 열린다 (회사 노트북처럼 같은 망의 다른 기기에 보이면 안 될 때).
 // 동기화(sync.json)를 켠 컴퓨터에서는 서버가 떠 있는 동안 다른 컴퓨터 현황을 계속 받아 온다 (keepSyncing).
+// 항상 켜 둘 세션(keepalive.json)이 있으면 꺼졌을 때 keepalive.js 로 되살린다 (keepAlive).
 // 지시 보내기: 현황판 세션 창에서 보낸 말을 send.js 로 그 세션 터미널에 넣는다 (다른 컴퓨터 세션은 동기화로).
 //   열쇠가 맞고 X-Workroom: send 머리글이 붙은 POST 만 받는다 (다른 사이트가 몰래 보내지 못하게).
 //   Orca 가 느린 컴퓨터에서도 서버가 멈추지 않게 send.js 를 따로 띄운 프로세스로 한 번에 하나씩 돌린다.
@@ -88,6 +89,24 @@ function keepSyncing() {
   };
   setTimeout(tick, 5000);
   setInterval(tick, 30 * 1000);
+}
+
+// 항상 켜 둘 세션(keepalive.json)이 있으면 2분마다 keepalive.js 를 따로 띄워 꺼진 세션을 되살린다.
+// 되살리기는 Orca 를 기다리느라 몇 분 걸릴 수 있어서 서버 안에서 돌리지 않는다 (keepalive.lock 으로 한 번에 하나만).
+function keepAlive() {
+  const tick = () => {
+    const list = readJson(path.join(ROOT, 'keepalive.json'), null);
+    if (!list || !Array.isArray(list.sessions) || !list.sessions.length) return;
+    try {
+      const pid = parseInt(fs.readFileSync(path.join(ROOT, 'keepalive.lock'), 'utf8'), 10);
+      if (pid) { try { process.kill(pid, 0); return; } catch (e) { if (e.code === 'EPERM') return; } }
+    } catch (_) {}
+    try {
+      require('child_process').spawn(process.execPath, [path.join(ROOT, 'keepalive.js')], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } catch (_) {}
+  };
+  setTimeout(tick, 90 * 1000);   // 로그인 직후에는 Orca 가 스스로 뜰 틈을 조금 준다
+  setInterval(tick, 2 * 60 * 1000);
 }
 
 // 터널(cloudflared)로 들어온 요청도 127.0.0.1 에서 오므로, 전달 헤더가 붙은 것은 바깥 요청으로 본다.
@@ -276,6 +295,7 @@ function serve(cfg) {
   server.listen(cfg.port, cfg.host, () => {
     for (const l of links(cfg)) console.log(l);
     keepSyncing();
+    keepAlive();
     // 일감 보드의 예약 업무·상태 맞추기, 텔레그램 알림(notify.json 이 있을 때만). 지시 보내기를 꺼 두었으면 둘 다 쉰다.
     if (cfg.send !== false) {
       board.start(runChild);

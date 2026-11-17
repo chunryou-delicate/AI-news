@@ -49,6 +49,10 @@ tasks.json
 acks.json
 notify.json
 notify-state.json
+# 항상 켜 둘 세션 (keepalive.js): 컴퓨터마다 다르다
+keepalive.json
+keepalive-status.json
+keepalive.lock
 # 회의록 보관 (sync.js)
 archive-repo/
 archive.request
