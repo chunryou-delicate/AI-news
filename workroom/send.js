@@ -340,6 +340,61 @@ function send(sid, text) {
   return Object.assign({ id, status: r.ok ? 'delivered' : 'failed' }, r);
 }
 
+// ---------- 승인 창에 키로 답하기 (카드 빠른 답 '승인'·'거절') ----------
+// 새 Orca 는 승인 창이 떠 있으면 글+Enter 를 넣지 않는다(agent_prompt_blocked). 그래서 글 대신 키만 따로 보낸다.
+//   승인 = Enter (승인 창이 뜨면 첫 줄 '1. Yes' 가 골라져 있다), 거절 = Esc ('No, and tell Claude what to do differently (esc)')
+// 엉뚱한 창에 답하지 않게: 보낼 때 본 승인 창(stateSince·waitingFor)이 받는 쪽에서도 그대로이고, 화면에 승인 창이 보일 때만 누른다.
+const KEY_LABEL = { approve: '🔑 승인 (Enter)', reject: '🔑 거절 (Esc)' };
+function promptOnScreen(preview) {
+  return /Do you want to|Do you trust|Yes, and don.t ask again|No, and tell Claude|❯\s*1\.\s*Yes/i.test(String(preview || ''));
+}
+function pressKeyLocal(sid, key, since, what) {
+  if (!KEY_LABEL[key]) return { ok: false, error: '모르는 키예요' };
+  const s = (readState().sessions || []).find((x) => x.id === sid && !x.machine);
+  if (!s) return { ok: false, error: '이 컴퓨터에서 그 세션을 찾지 못했어요' };
+  if (s.state !== 'approval') return { ok: false, error: '그 세션은 지금 승인을 기다리고 있지 않아요 (이미 답했을 수 있어요)' };
+  if ((since && s.stateSince && Number(since) !== Number(s.stateSince)) || (what && s.waitingFor && what !== s.waitingFor)) {
+    return { ok: false, error: '그 사이 승인 창이 바뀌어서 누르지 않았어요. 현황판을 새로 보고 다시 골라 주세요' };
+  }
+  const handle = s.orca && s.orca.terminal;
+  if (!handle) return { ok: false, error: 'Orca 터미널에서 돌고 있는 세션만 키로 답할 수 있어요' };
+  let info;
+  try { info = orca(['terminal', 'show', '--terminal', handle], SHOW_MS); } catch (e) {
+    return { ok: false, error: e.timeout ? `Orca 가 ${SHOW_MS / 1000}초 안에 답하지 않았어요 (잠시 뒤 다시 눌러 주세요)` : 'Orca 에 연결하지 못했어요 (Orca 가 켜져 있는지 확인)' };
+  }
+  const t = info && info.ok && info.result && (info.result.terminal || info.result);
+  if (!t || t.handle !== handle) return { ok: false, error: '그 세션 터미널이 지금 열려 있지 않아요' };
+  if (!promptOnScreen(t.preview)) return { ok: false, error: '그 세션 화면에 승인 창이 보이지 않아서 누르지 않았어요 (이미 답했거나 다른 창일 수 있어요)' };
+  const args = key === 'approve' ? ['terminal', 'send', '--terminal', handle, '--enter'] : ['terminal', 'send', '--terminal', handle, '--text', '\u001b'];
+  let r;
+  try { r = orca(args, SEND_MS); } catch (e) {
+    return { ok: false, error: e.timeout ? `Orca 가 ${SEND_MS / 1000}초 안에 답하지 않았어요. 눌렸을 수도 있으니 터미널을 보고 판단해 주세요` : '보내다 오류가 났어요: ' + String(e.message || e).slice(0, 160) };
+  }
+  return r && r.ok ? { ok: true } : { ok: false, error: orcaError(r) };
+}
+function sendKey(sid, key, since) {
+  if (!KEY_LABEL[key]) return { ok: false, error: '모르는 키예요 (approve 또는 reject)' };
+  const s = (readState().sessions || []).find((x) => x.id === sid);
+  if (!s) return { ok: false, error: '그 세션을 찾지 못했어요' };
+  const id = crypto.randomBytes(6).toString('hex');
+  const what = s.waitingFor || '';
+  // text 는 비워 둔다: 키를 모르는 옛 현황판이 받으면 글로 넣지 않고 '보낼 말이 비어 있어요' 로 거절한다 (엉뚱한 승인 방지)
+  const base = { id, at: Date.now(), kind: 'key', key, since: Number(since) || Number(s.stateSince) || 0, what, sid, title: s.title || '', room: s.room || '', text: '' };
+  const logBase = Object.assign({}, base, { text: KEY_LABEL[key] + (what ? ' · ' + what.slice(0, 80) : '') });
+  if (s.machine) {
+    if (s.state === 'ended') return { ok: false, error: '이미 끝난 세션이에요' };
+    const sc = readJson(path.join(ROOT, 'sync.json'), null);
+    if (!sc || !sc.repo || !sc.push) return { ok: false, error: '이 컴퓨터는 동기화로 올리지 않게 되어 있어서 다른 컴퓨터로 보낼 수 없어요' };
+    fs.mkdirSync(OUTBOX, { recursive: true });
+    writeAtomic(path.join(OUTBOX, `${id}.json`), JSON.stringify(Object.assign({ to: machineKey(s.machine), toMachine: s.machine, from: myMachine() }, base)));
+    logAdd(Object.assign({ status: 'queued', toMachine: s.machine }, logBase));
+    return { ok: true, id, status: 'queued', toMachine: s.machine };
+  }
+  const r = pressKeyLocal(sid, key, base.since, what);
+  logAdd(Object.assign({ status: r.ok ? 'delivered' : 'failed', error: r.error || '', doneAt: Date.now() }, logBase));
+  return Object.assign({ id, status: r.ok ? 'delivered' : 'failed' }, r);
+}
+
 // ---------- 사람 고용: 그 방 프로젝트 폴더에 새 Claude 세션 ----------
 // Orca 새 터미널(탭 제목 = 이름)에서 claude -n "이름" 으로 시작한다. 다른 컴퓨터 방이면 지시와 같은 길(outbox → 그 컴퓨터 sync.js)로 보낸다.
 const CREATE_MS = 60 * 1000;
@@ -516,18 +571,20 @@ function deliverInbound(m) {
   if (m.kind === 'hire') return hireLocal(m.roomLabel, m.name, m.cwd, m.prompt);
   if (m.kind === 'close') return closeLocal(m.sid, !!m.force);
   if (m.kind === 'rename') return renameLocal(m.sid, m.name || String(m.text || '').replace(/^\/rename\s+/, ''));
+  if (m.kind === 'key') return pressKeyLocal(m.sid, m.key, m.since, m.what);
   return deliverLocal(m.sid, m.text);
 }
 
-module.exports = { send, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, rename, renameLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey, orcaBin };
+module.exports = { send, sendKey, pressKeyLocal, deliverLocal, deliverInbound, hire, hireLocal, closeSession, closeLocal, rename, renameLocal, cleanName, cleanText, pendingOutbox, applyReceipt, readLog, machineKey, orcaBin };
 
 // 명령줄 (현황판 서버는 --json 을 붙여 따로 띄운 프로세스로 부른다)
 //   node send.js [--json] <세션ID> <지시>
 //   node send.js --hire [--json] <방> <이름> [-- <첫 지시>]
 //   node send.js --close [--json] [--force] <세션ID> [<세션ID> ...]   (--force = 해고: 상태와 상관없이)
 //   node send.js --rename [--json] <세션ID> <새 이름>
+//   node send.js --key [--json] <세션ID> <approve|reject> [<본 승인 창의 stateSince>]   (승인 창에 Enter·Esc)
 if (require.main === module) {
-  const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : process.argv[2] === '--rename' ? 'rename' : 'send';
+  const mode = process.argv[2] === '--hire' ? 'hire' : process.argv[2] === '--close' ? 'close' : process.argv[2] === '--rename' ? 'rename' : process.argv[2] === '--key' ? 'key' : 'send';
   let argv = process.argv.slice(mode === 'send' ? 2 : 3);
   const json = argv[0] === '--json';
   if (json) argv = argv.slice(1);
@@ -544,6 +601,10 @@ if (require.main === module) {
       const [room, ...rest] = head;
       r = room && rest.length ? hire(room, rest.join(' '), prompt) : { ok: false, error: '방과 이름이 필요해요' };
       done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 그 컴퓨터가 띄움)` : `고용했어요: ${x.name} (${x.folder})${x.promptError ? ' — ' + x.promptError : ''}`));
+    } else if (mode === 'key') {
+      const [sid, key, since] = argv;
+      r = sid && key ? sendKey(sid, key, since) : { ok: false, error: '세션과 키(approve·reject)가 필요해요' };
+      done(r, (x) => (x.status === 'queued' ? `${x.toMachine} 로 보냈어요 (동기화 때 눌림)` : `눌렀어요: ${KEY_LABEL[key]}`));
     } else if (mode === 'rename') {
       const [sid, ...rest] = argv;
       r = sid && rest.length ? rename(sid, rest.join(' ')) : { ok: false, error: '세션과 새 이름이 필요해요' };

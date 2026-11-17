@@ -2715,6 +2715,11 @@
       { l: '승인: 다시 해 줘', t: '박사님 승인: 방금 auto mode가 막은 「' + dn.what + '」 해도 됩니다. 그대로 다시 해 주세요.' },
       { l: '그건 하지 마', t: '방금 auto mode가 막은 「' + dn.what + '」는 하지 마세요. 다른 방법이 있으면 알려 주세요.' }
     ];
+    // 진짜 승인 창은 글이 아니라 키로 답한다 (새 Orca 는 승인 창에 글을 넣지 않는다): 승인 = Enter(1. Yes), 거절 = Esc
+    if (cat === 'approval') return [
+      { l: '✓ 승인 (Enter)', key: 'approve' },
+      { l: '✕ 거절 (Esc)', key: 'reject' }
+    ];
     return (QR[cat] || []).map(function (t) { return { l: t, t: t }; });
   }
   function qrHtml(s, cat) {
@@ -2727,13 +2732,15 @@
     var note = q.note ? '<span class="qr-note' + (q.err ? ' err' : '') + '">' + esc(q.note) + '</span>' : '';
     return '<div class="qr" style="--qc:' + CAT[cat].color + '">' + btns + input + note + '</div>';
   }
-  function sendQuick(sid, text) {
+  function sendQuick(sid, text, key) {
     var q = qrState[sid] = qrState[sid] || {};
     q.armed = null; q.note = '보내는 중…'; q.err = false;
     render();
-    postJson('__send', { sid: sid, text: text }).then(function (j) {
+    var s = byId[sid], label = key === 'approve' ? '승인(Enter)' : key === 'reject' ? '거절(Esc)' : text;
+    var body = key ? { sid: sid, key: key, since: (s && s.stateSince) || 0 } : { sid: sid, text: text };
+    postJson('__send', body).then(function (j) {
       q.err = !j.ok;
-      q.note = j.ok ? (j.status === 'queued' ? j.toMachine + ' 로 보냈어요 (동기화 때 들어가요)' : '보냈어요: ' + text) : (j.error || '못 보냈어요');
+      q.note = j.ok ? (j.status === 'queued' ? j.toMachine + ' 로 보냈어요 (동기화 때 ' + (key ? '눌러요' : '들어가요') + ')' : (key ? '눌렀어요: ' : '보냈어요: ') + label) : (j.error || '못 보냈어요');
       if (j.ok) { q.open = false; q.draft = ''; }
       render();
     });
@@ -2745,7 +2752,7 @@
       e.stopPropagation();
       var sid = b.getAttribute('data-qr'), i = Number(b.getAttribute('data-qi')), cat = b.getAttribute('data-qc');
       var q = qrState[sid] = qrState[sid] || {};
-      if (q.armed === i && Date.now() - q.at < 4000) { var qt = qrTexts(byId[sid], cat)[i]; if (qt) sendQuick(sid, qt.t); return; }
+      if (q.armed === i && Date.now() - q.at < 4000) { var qt = qrTexts(byId[sid], cat)[i]; if (qt) sendQuick(sid, qt.t || '', qt.key); return; }
       q.armed = i; q.at = Date.now();
       render();
       setTimeout(render, 4100);

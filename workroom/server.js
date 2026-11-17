@@ -166,6 +166,7 @@ function runChild(args, what) {
     syncSoon(r);
     // 지시를 보냈으면(카드 빠른 답·세션 창·텔레그램·일감) 그 세션의 지금 확인할 일을 확인한 것으로 — 다른 기기·컴퓨터에서도 사라지게
     if (r.ok && args[0] === '--json') { try { acks.markSession(readStateJs(), args[1]); } catch (_) {} }
+    if (r.ok && args[0] === '--key') { try { acks.markSession(readStateJs(), args[2]); } catch (_) {} }
     return r;
   });
 }
@@ -246,6 +247,11 @@ function handleSend(cfg, req, res, headers, pathname, u) {
       return;
     }
     const sid = String(j.sid || ''), text = String(j.text || '').slice(0, 2000);
+    // 승인 창에 키로 답하기 (카드 빠른 답 '승인'·'거절')
+    if (sid && (j.key === 'approve' || j.key === 'reject')) {
+      runChild(['--key', '--json', sid, j.key, String(Number(j.since) || 0)], '승인 키').then((r) => sendJson(res, headers, r.ok ? 200 : 409, r));
+      return;
+    }
     if (!sid || !text.trim()) { sendJson(res, headers, 409, { ok: false, error: '보낼 말이 비어 있어요' }); return; }
     runChild(['--json', sid, text], '보내기').then((r) => sendJson(res, headers, r.ok ? 200 : 409, r));
   }, () => sendJson(res, headers, 413, { ok: false, error: '너무 길어요' }));
