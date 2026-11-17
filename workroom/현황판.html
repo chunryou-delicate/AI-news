@@ -2097,6 +2097,12 @@
     var d = new Date(t);
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
+  // 오늘이 아니면 날짜까지 ("11월 8일 16:36") — 며칠 전 보낸 지시가 오늘 것처럼 보이지 않게
+  function dhm(t) {
+    var d = new Date(t), n = new Date();
+    if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) return hm(t);
+    return (d.getFullYear() !== n.getFullYear() ? d.getFullYear() + '년 ' : '') + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + hm(t);
+  }
   var KIND_KO = { order: '지시', report: '보고', msg: '메시지', ask: '요청', dispatch: '투입' };
   function speakerOf(e, mt) {
     if (e.kind === 'order') return { who: e.who || '의장', to: liveName(e.sid, e.to), color: mt && mt.chairId ? personColor(mt.chairId) : 'var(--question)' };
@@ -3437,7 +3443,7 @@
         var st = SEND_STATUS[e.status] || SEND_STATUS.queued, bad = e.status === 'failed';
         // 다른 컴퓨터가 동기화 사이에 밀린 지시를 하나로 합쳐 넣었으면 '합쳐서 들어감'
         var label = e.status === 'delivered' && e.merged > 1 ? '합쳐서 들어감' : st[1];
-        return '<li class="' + st[0] + (bad || sendOpen[e.id] ? ' full' : '') + '" data-send="' + i + '"><b>' + hm(e.at) + ' ' + label + '</b><span>' + esc(e.text) + '</span>' +
+        return '<li class="' + st[0] + (bad || sendOpen[e.id] ? ' full' : '') + '" data-send="' + i + '"><b>' + dhm(e.at) + ' ' + label + '</b><span>' + esc(e.text) + '</span>' +
           (e.error ? '<em class="why">이유: ' + esc(e.error) + '</em>' : '') +
           (bad ? '<button type="button" class="mini-btn resend" data-resend="' + i + '" title="이 말을 아래 입력칸에 다시 넣어요">다시 쓰기</button>' : '') + '</li>';
       }).join('');
