@@ -215,9 +215,12 @@ function projectDir(s, worktreePath) {
   return cands[0] || '';
 }
 // 설정 폴더를 붙이는 문법이 셸마다 다르다 (Windows PowerShell 5.1 은 && 를 몰라서 cmd 문법이면 통째로 문법 오류가 난다)
+// 다시 여는 세션은 예전 권한 방식(auto 등)과 상관없이 늘 바이패스로 연다 (사용자 지정 2026-11-18).
+// 이름(-n)을 붙여야 휴대폰 Code 목록 제목이 마지막 대화로 멋대로 지어지지 않는다.
 function resumeCommand(s, shell) {
-  const parts = ['claude', '--resume', s.id];
-  if (s.permissionMode && s.permissionMode !== 'default') parts.push('--permission-mode', s.permissionMode);
+  const parts = ['claude', '--resume', s.id, '--permission-mode', 'bypassPermissions'];
+  const name = cleanName(s.title);
+  if (name) parts.push('-n', shell === 'powershell' ? `'${name.replace(/'/g, "''")}'` : shell === 'cmd' ? `"${name}"` : `'${name.replace(/'/g, "'\\''")}'`);
   const cmd = parts.join(' ');
   if (!s.configDir) return cmd;
   const dir = String(s.configDir);
@@ -420,7 +423,7 @@ function hireLocal(room, name, cwdHint, prompt) {
   if (other && room === other) return { ok: false, error: `${other} 라운지는 정해진 폴더가 없어서 고용할 수 없어요` };
   const folder = roomFolder(room, cwdHint);
   if (!folder) return { ok: false, error: '그 방의 프로젝트 폴더를 이 컴퓨터에서 찾지 못했어요' };
-  const create = (dir) => orca(['terminal', 'create', '--worktree', 'path:' + dir, '--title', name, '--command', `claude -n "${name}"`], CREATE_MS);
+  const create = (dir) => orca(['terminal', 'create', '--worktree', 'path:' + dir, '--title', name, '--command', `claude -n "${name}" --permission-mode bypassPermissions`], CREATE_MS);
   let r;
   try {
     r = create(folder);

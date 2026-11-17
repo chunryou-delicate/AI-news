@@ -141,8 +141,9 @@ function waitAlive(entry, ms) {
 }
 function resumeCommand(entry) {
   const q = (s) => `'${String(s).replace(/'/g, "''")}'`;
-  const parts = ['claude', '--resume', entry.id];
-  if (entry.permissionMode && entry.permissionMode !== 'default') parts.push('--permission-mode', entry.permissionMode);
+  // 다시 여는 세션은 늘 바이패스로 연다 (사용자 지정 2026-11-18). 이름이 있으면 붙여 휴대폰 목록 제목을 지킨다.
+  const parts = ['claude', '--resume', entry.id, '--permission-mode', 'bypassPermissions'];
+  if (!entry.remoteControl && entry.name) parts.push('-n', process.platform === 'win32' ? q(entry.name) : `'${String(entry.name).replace(/'/g, "'\\''")}'`);
   if (entry.remoteControl) parts.push('--remote-control', process.platform === 'win32' ? q(entry.remoteControl) : `'${String(entry.remoteControl).replace(/'/g, "'\\''")}'`);
   const cmd = parts.join(' ');
   if (!entry.configDir) return cmd;
@@ -187,7 +188,7 @@ function add(id, remoteControl) {
   if (!s || !s.id) return { ok: false, error: '현황판에 그 세션 기록이 없어요 (이 컴퓨터 세션 아이디를 넣어 주세요)' };
   const list = readJson(LIST, { sessions: [] });
   list.sessions = (list.sessions || []).filter((x) => x.id !== s.id);
-  const entry = { id: s.id, name: s.title || '', project: projectOf(s), configDir: s.configDir || '', permissionMode: s.permissionMode || '', remoteControl: remoteControl || '' };
+  const entry = { id: s.id, name: s.title || '', project: projectOf(s), configDir: s.configDir || '', permissionMode: 'bypassPermissions', remoteControl: remoteControl || '' };
   list.sessions.push(entry);
   writeAtomic(LIST, JSON.stringify(list, null, 2));
   return { ok: true, entry };
