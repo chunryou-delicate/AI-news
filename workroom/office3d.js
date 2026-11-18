@@ -52,6 +52,7 @@
     var PLATE_MIN_PX = 22;              // 명패가 화면에서 이보다 낮게 보이면 유리 안에서 키운다 (이름 글씨 10px 쯤)
     var TAG_DESK_Y = 1.18;              // 책상에 앉은 사람 이름표 높이 (머리 옆). 모두 같은 높이라 한 줄로 가지런하다
     var TAG_FONT = 9, TAG_PAD = 10;     // 이름표 글씨 크기(px), 글씨 밖 폭(왼쪽 띠·안쪽 여백, 현황판.html 의 .o3-tag 와 맞춘다)
+    var FAR_TAG_PPM = 7, FAR_BUB_PPM = 6;    // 화면에서 1m 가 이 px 보다 작게 보일 만큼 멀면 이름표를 감추고, 말풍선은 알림·가장 최근 말만 남긴다
     var SEAT_HIP = 0.63;             // 앉았을 때 엉덩이 뼈 높이 (의자 윗면 0.49)
     var SEAT_FWD = 0.12;             // 앉았을 때 엉덩이를 의자 가운데에서 탁자 쪽으로 당기는 거리 (소파 등)
     // 책상 의자에서는 동작마다 다르게: 쉬며 앉아 있을 때(sit)는 무릎에 팔을 대고 푹 숙이는 순간이 있어서 조금 뒤로
@@ -3938,6 +3939,8 @@
         if (words.length) lines[lines.length - 1] = cutTo(lines[lines.length - 1] + ' ' + words.join(' '), w);
         return lines;
       }
+      // 이름 "[방] 역할" 에서 방 꼬리표를 뗀 역할 (꼬리표뿐이면 그대로)
+      function shortName(n) { var m = String(n || '').match(/^\s*\[[^\]]*\]\s*(\S.*)$/); return m ? m[1] : String(n || ''); }
       function hit(p, q) { return p.x < q.x + q.w + 3 && q.x < p.x + p.w + 3 && p.y < q.y + q.h + 3 && q.y < p.y + p.h + 3; }
 
       // 유리 명패 크기: 화면에서 PLATE_MIN_PX 보다 낮게 보이면 유리 폭 안에서 키운다.
@@ -4000,7 +4003,7 @@
           var b = a.p.bubble;
           if (b && b.kind === 'say' && !b.old && !a.worker && (!focus || a.room === focus) && b.t > latest) latest = b.t;
         });
-        var items = [];
+        var items = [], farTags = [];
         list.forEach(function (a) {
           a.parts.head.getWorldPosition(HV);
           var headY = HV.y;
@@ -4014,11 +4017,25 @@
           var still = !a.moving && a.alpha > 0.9, desk = still && a.spotKey.indexOf('seat:') === 0;
           var gap = desk ? SEAT : still && /^q\d/.test(a.spotKey) ? 0.8 : 1.6;
           var mw = Math.min(150, Math.floor(((gap - 0.22) * ppm - 2) / 2) * 2);
-          var full = on && (inFocus || ppm > 34) && mw >= 36, icon = on && !full && a.alertIco;
-          vis(a.tag, full || icon);
+          var full = on && (inFocus || ppm > 34) && mw >= 36;
+          // 멀어서 머리 옆에 붙일 폭이 안 나오면 머리 위 가운데에 띄운다(자리에 앉아 있으면 방 꼬리표 [방] 은 떼고 역할만).
+          // 옆 이름표와 겹치면 아래(놓기)에서 두 칸까지 위로 비켜 엇갈리게 놓고, 그래도 겹치면 감춘다.
+          var far = on && !full && ppm > FAR_TAG_PPM;
+          var icon = on && !full && !far && a.alertIco;
+          var mode = icon ? 'icon' : far ? 'far' : 'full';
+          if (!far) vis(a.tag, full || icon);
           var top = sp ? sp.y - 4 : 0;
-          if (a.tagMode !== (icon ? 'icon' : 'full')) { a.tag.classList.toggle('icon-only', icon); a.tagMode = icon ? 'icon' : 'full'; }
-          if (icon) {
+          if (a.tagMode !== mode) { a.tag.classList.toggle('icon-only', icon); a.tag.classList.toggle('far', far); a.tagMode = mode; a.tagFit = ''; }
+          if (far) {
+            var fw = Math.round(clamp(3 * SEAT * ppm - 6, 64, 110));   // 세 칸까지 엇갈려 서니 옆 세 자리 폭까지
+            var ffk = 'far|' + fw + '|' + a.tagKey + '|' + (desk ? 1 : 0);
+            if (a.tagFit !== ffk) {
+              a.tagFit = ffk;
+              a.farSize = null;
+              a.tag.innerHTML = a.tagIco + '<span>' + esc(cutTo(desk ? shortName(a.tagName) : a.tagName, fw - TAG_PAD - (a.tagIco ? 15 : 0))) + '</span>';
+            }
+            farTags.push({ a: a, x: sp.x, y: sp.y - 2, prio: (a.tag.classList.contains('sel') ? 4 : 0) + (a.alertIco ? 2 : 0) + (a.p.state === 'working' ? 1 : 0) });
+          } else if (icon) {
             put(a.tag, sp.x, sp.y, '-50%', '-100%');
             top = sp.y - 24;
           } else if (full) {
@@ -4044,7 +4061,7 @@
           var b = a.p.bubble, want = on && !a.worker && !!a.bubKey && b && b.kind !== 'mini' && a.alpha > 0.6;
           if (want && focus) want = inFocus || b.kind === 'alert';
           else if (want && a.rc) want = b.kind === 'alert';   // 점호 줄에서는 급한 말풍선만
-          else if (want && ppm < 12) want = b.kind === 'alert' || b.t === latest;
+          else if (want && ppm < FAR_BUB_PPM) want = b.kind === 'alert' || b.t === latest;
           if (!want) { vis(a.bub, false); return; }
           var big = inFocus;
           var below = big && a.p.row === 'near' && a.spotKey.indexOf('seat:') === 0 && !a.moving;
@@ -4062,6 +4079,25 @@
           }
           // 겹치면 알림 → 가장 최근 말 → 최근 말 → 하던 일 → 조금 지난 말 순서로 남긴다
           items.push({ a: a, x: sp.x, y: y, below: below, prio: (b.kind === 'alert' ? 4 : b.kind === 'say' ? (isLatest ? 3 : b.old ? 0.5 : 2) : 1) + (b.t || 0) / 1e13 });
+        });
+        // 멀리서 본 이름표: 크기가 바뀐 것만 재고, 고른 사람·알림·일하는 사람부터 놓는다.
+        // 겹치면 위로 비켜 보고(옆자리끼리 엇갈려 선다), 그래도 겹치면 감춘다. 말풍선은 이름표를 피해 그 위에 선다.
+        farTags.forEach(function (t) { if (!t.a.farSize) vis(t.a.tag, true); });
+        farTags.forEach(function (t) { if (!t.a.farSize) t.a.farSize = { w: t.a.tag.offsetWidth, h: t.a.tag.offsetHeight }; });
+        farTags.sort(function (p, q) { return q.prio - p.prio; });
+        farTags.forEach(function (t) {
+          var s = t.a.farSize, r = { x: t.x - s.w / 2, y: t.y - s.h, w: s.w, h: s.h };
+          for (var n = 0; n < 2; n++) {
+            var o = null;
+            for (var i = 0; i < placed.length; i++) if (hit(placed[i], r)) { o = placed[i]; break; }
+            if (!o) break;
+            r.y = o.y - s.h - 2;
+          }
+          var ok = r.y + r.h > 0 && r.y < ch && !placed.some(function (q) { return hit(q, r); });
+          vis(t.a.tag, ok);
+          if (!ok) return;
+          placed.push(r);
+          put(t.a.tag, r.x, r.y, '0', '0');
         });
         // 크기가 바뀐 말풍선만 다시 잰다 (한꺼번에 보이게 한 뒤 읽어서 레이아웃은 한 번만)
         items.forEach(function (it) { if (!it.a.bubSize) vis(it.a.bub, true); });
