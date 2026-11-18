@@ -152,6 +152,14 @@ function clipBlock(t, max) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
+// 사람이 쓴 요청이 아니라 Claude Code·Orca 가 넣은 자동 프롬프트인지
+// (<task-notification> 같은 태그, Orca 워커 안내, "[Cross-session idle notice]" 같은 다른 세션 알림)
+function isAutoPrompt(p) {
+  p = String(p || '');
+  return /^\s*<[a-z][\w-]*[\s>]/i.test(p) || /^\s*You are working inside Orca/i.test(p)
+    || /^\s*You have \d+ orchestration message/i.test(p) || /^\s*\[Cross-session [^\]\n]{1,40}\]/i.test(p);
+}
+
 function roundName(r) {
   return { r1: '1라운드', r2: '2라운드', r3: '3라운드', synthesis: '종합', critic: '비평', wrapup: '정리', done: '종료' }[r] || r || '';
 }
@@ -372,7 +380,10 @@ function collectEntries(ev, input, s, sp) {
         const from = (p.match(/from-name="([^"]*)"/i) || [])[1] || '다른 세션';
         const body = p.replace(/^\s*<cross-session-message\b[^>]*>/i, '').replace(/<\/cross-session-message>\s*$/i, '');
         out.push(Object.assign({}, base, { who: from, to: sp.who, kind: 'msg', text: clipBlock(body, 1500) }));
-      } else if (!/^\s*<[a-z][\w-]*[\s>]/i.test(p) && p.trim()) {
+      } else if (/^\s*\[Cross-session [^\]\n]{1,40}\]/i.test(p)) {
+        // 다른 세션이 쉬게 됐다는 자동 알림: 사용자 요청이 아니다 (파이프 주소는 적지 않는다)
+        out.push(Object.assign({}, base, { who: 'Claude Code', to: sp.who, kind: 'state', text: /idle/i.test(p) ? '자동 알림 · 다른 세션이 쉬는 중' : '자동 알림 · 다른 세션' }));
+      } else if (!isAutoPrompt(p) && p.trim()) {
         out.push(Object.assign({}, base, { who: '사용자', to: sp.who, kind: 'ask', text: clipBlock(p, 1500) }));
       }
       break;
@@ -811,17 +822,19 @@ function handleEvent(input) {
   const tool = input.tool_name || '';
   switch (ev) {
     case 'SessionStart':
-      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; s.ask = ''; s.askText = ''; delete s.denied; }
+      if (input.source === 'clear') { s.lastPrompt = ''; s.title = ''; s.lastMessage = ''; s.ask = ''; s.askText = ''; s.answers = []; delete s.denied; }
       if (input.source !== 'compact') next = 'idle';
       if (input.model) s.model = typeof input.model === 'string' ? input.model : (input.model.display_name || input.model.id || '');
       delete s.endedAt;
       break;
     case 'UserPromptSubmit':
       next = 'working';
-      // <task-notification> 같은 시스템 메시지나 Orca 워커 안내문은 사람이 보낸 요청이 아니므로 마지막 요청으로 남기지 않는다.
-      if (input.prompt && !/^\s*<[a-z][\w-]*[\s>]/i.test(input.prompt) && !/^\s*You are working inside Orca/i.test(input.prompt)
-        && !/^\s*You have \d+ orchestration message/i.test(input.prompt)) {
+      // <task-notification>·다른 세션 알림 같은 자동 프롬프트나 Orca 워커 안내문은 사람이 보낸 요청이 아니므로 마지막 요청으로 남기지 않는다.
+      // 사람이 보낸 요청이면 그 뒤의 답(answers)을 새로 모은다. 자동 프롬프트에 단 답은 앞 답 뒤에 붙는다.
+      s.autoTurn = isAutoPrompt(input.prompt);
+      if (input.prompt && !s.autoTurn) {
         s.lastPrompt = clip(input.prompt, 200);
+        s.answers = [];
         delete s.denied;   // 사람이 답했으면 auto mode가 막은 것은 확인할 일에서 내린다
       }
       s.promptAt = startedAt;
@@ -871,6 +884,9 @@ function handleEvent(input) {
       s.waitingFor = '';
       if (input.last_assistant_message) {
         s.lastMessage = clip(input.last_assistant_message, 200);
+        // 마지막 요청 뒤에 한 답들 (자동 알림에 짧게 답해도 앞의 긴 보고가 현황판에서 밀려나지 않게)
+        s.answers = (Array.isArray(s.answers) ? s.answers : [])
+          .concat([Object.assign({ at: startedAt, text: s.lastMessage }, s.autoTurn ? { auto: true } : {})]).slice(-4);
         const ak = askKind(input.last_assistant_message);
         s.ask = ak.kind;
         s.askText = clip(ak.text, 160);
@@ -1324,6 +1340,7 @@ function publicSession(s, state, quiet, reg, R, usage) {
     endedAt: s.endedAt || 0,
     lastPrompt: s.lastPrompt || '',
     lastMessage: s.lastMessage || '',
+    answers: Array.isArray(s.answers) ? s.answers.slice(-4) : [],
     ask: s.ask || '',
     askText: s.askText || '',
     tool: s.tool || '',
