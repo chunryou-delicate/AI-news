@@ -402,9 +402,16 @@ function sendKey(sid, key, since) {
 // Orca 새 터미널(탭 제목 = 이름)에서 claude -n "이름" 으로 시작한다. 다른 컴퓨터 방이면 지시와 같은 길(outbox → 그 컴퓨터 sync.js)로 보낸다.
 const CREATE_MS = 60 * 1000;
 const WAIT_MS = 90 * 1000;   // 고용하며 첫 지시를 넣을 때 Claude 가 뜰 때까지 기다리는 한도
-// 셸에 그대로 들어가므로 글자·숫자·빈칸·몇몇 기호만 남긴다
+// 셸에 그대로 들어가므로 글자·숫자·빈칸·몇몇 기호만 남긴다 (이름 규칙 "[방] 역할"의 대괄호는 남긴다)
 function cleanName(name) {
-  return String(name || '').replace(/[^\p{L}\p{N} ._()·-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return String(name || '').replace(/[^\p{L}\p{N} ._()·\[\]-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+// 세션 이름 규칙 (사용자 지정 2026-11-18): "[방] 역할". New world 는 NW, AI news 는 AI News 로 줄인다.
+const ROOM_TAGS = { 'New world': 'NW', 'AI news': 'AI News' };
+function ruleName(room, name) {
+  name = cleanName(name);
+  if (!name || /^\[/.test(name) || !room) return name;
+  return cleanName(`[${ROOM_TAGS[room] || room}] ${name}`);
 }
 function isDir(p) { try { return !!p && fs.statSync(p).isDirectory(); } catch (_) { return false; } }
 function roomsConfig() { return readJson(path.join(ROOT, 'rooms.json'), {}) || {}; }
@@ -417,7 +424,7 @@ function roomFolder(room, cwdHint) {
 }
 // prompt 가 있으면 Claude 가 입력을 받을 준비가 될 때까지(tui-idle) 기다렸다가 첫 지시로 넣는다 (일감 보드·예약 업무).
 function hireLocal(room, name, cwdHint, prompt) {
-  name = cleanName(name);
+  name = ruleName(room, name);
   if (!name) return { ok: false, error: '이름을 적어 주세요' };
   const other = (roomsConfig().otherRoom || {}).name;
   if (other && room === other) return { ok: false, error: `${other} 라운지는 정해진 폴더가 없어서 고용할 수 없어요` };
