@@ -395,6 +395,12 @@
   .t-day .min-tools { padding: 6px 8px; }
   .t-day .min-list { max-height: min(56vh, 560px); }
   .t-day .empty-note { padding: 10px; }
+  /* 긴 회의록은 최근 것만 그리고, 앞부분은 단추로 더 (한 번에 수천 줄을 그리면 버벅인다) */
+  .m-older { display: flex; justify-content: center; }
+  .m-older button { border: 1px dashed var(--line); background: none; color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .m-older button:hover { color: var(--ink); border-color: var(--muted); }
+  .m-day { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 800; color: var(--muted); padding: 2px 0; }
+  .m-day::before, .m-day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
   /* 사람 */
   .person { cursor: pointer; outline: none; }
@@ -758,6 +764,17 @@
   .sheet header button, .sheet header input { cursor: pointer; }
   .sheet.moving header { cursor: grabbing; }
   .sheet .close { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  /* 세션 창 탭: 정보 / 회의록(이 세션과 주고받은 말만). 회의록 탭이면 창을 넓히고 정보·명령·해고 줄은 숨긴다 (지시 보내기는 그대로 아래) */
+  .sheet-tabs { display: flex; gap: 4px; padding: 8px 16px 0; border-bottom: 1px solid var(--line); }
+  .sheet-tabs button { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); padding: 6px 10px 7px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: -1px; }
+  .sheet-tabs button.on { color: var(--ink); border-bottom-color: var(--ink); }
+  .sheet-tabs button b { font-size: 11.5px; color: var(--muted); font-weight: 600; margin-left: 2px; }
+  .sheet.min-mode { width: min(760px, 100%); }
+  .sheet.min-mode #sheetBody, .sheet.min-mode .actions, .sheet.min-mode .fire-row { display: none !important; }
+  .sheet-min .min-tools { padding: 8px 16px; }
+  .sheet-min .s-min-note { font-size: 11.5px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet-min .min-list { padding: 10px 16px; max-height: min(60vh, 640px); }
+  .sheet-min .empty-note { padding: 10px 0; }
   .sheet dl { margin: 0; padding: 12px 16px 6px; display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; }
   .sheet dt { color: var(--muted); font-size: 12.5px; }
   .sheet dd { margin: 0; overflow-wrap: anywhere; }
@@ -1051,7 +1068,12 @@
   <div class="sheet">
     <header><h3 id="sheetTitle"></h3><button class="rename-btn" id="renameBtn" type="button" title="이 직원(세션) 이름 바꾸기" hidden>✎ 이름</button><button class="close" id="sheetClose" type="button">닫기</button></header>
     <form class="rename-row" id="renameRow" hidden><input id="renameInput" maxlength="40" autocomplete="off" placeholder="새 이름 (세션 이름도 같이 바뀌어요)"><button type="submit">바꾸기</button><button type="button" id="renameCancel">취소</button><span class="send-note" id="renameNote"></span></form>
+    <div class="sheet-tabs" id="sheetTabs" role="tablist"><button type="button" role="tab" data-stab="info" class="on" aria-selected="true">정보</button><button type="button" role="tab" data-stab="min" aria-selected="false" title="이 세션과 주고받은 말만 회의록에서 모아 봐요">회의록<b id="sheetMinN"></b></button></div>
     <dl id="sheetBody"></dl>
+    <div class="sheet-min" id="sheetMin" hidden>
+      <div class="min-tools"><div class="seg s-seg" role="group" aria-label="세션 회의록 보기"><button type="button" data-sf="talk" class="on">대화</button><button type="button" data-sf="all">전체</button></div><span class="s-min-note" id="sheetMinNote"></span><button type="button" class="save" id="sheetMinSave">회의록 저장</button></div>
+      <ol class="min-list" id="sheetMinList"></ol>
+    </div>
     <form class="send-box" id="sendBox" hidden>
       <label for="sendText">지시 보내기</label>
       <div class="send-row">
@@ -2271,7 +2293,7 @@
     if (dim === '3d') {
       // 3D 에서는 카메라가 그 방으로 날아가고, 오른쪽에 회의록이 나온다.
       if (!roomsView().some(function (r) { return r.name === name; })) return;
-      zoomRoom = name; logData = null; lastMinKey = ''; expanded = {}; cardSid = null;
+      zoomRoom = name; logData = null; lastMinKey = ''; expanded = {}; roomLim = MIN_PAGE; cardSid = null;
       markRoomUrl(name);
       renderSide();
       loadRoomLog();
@@ -2280,7 +2302,7 @@
     }
     var cell = office.querySelector('.room-cell[data-room="' + CSS.escape(name) + '"]');
     if (!cell) return;
-    zoomRoom = name; logData = null; lastRoomScene = ''; lastBubbleKey = ''; lastMinKey = ''; expanded = {};
+    zoomRoom = name; logData = null; lastRoomScene = ''; lastBubbleKey = ''; lastMinKey = ''; expanded = {}; roomLim = MIN_PAGE;
     markRoomUrl(name);
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     var st = stage.getBoundingClientRect(), r = cell.getBoundingClientRect();
@@ -2329,24 +2351,43 @@
   function loadRoomLog() {
     var room = roomsView().filter(function (r) { return r.name === zoomRoom; })[0];
     if (!room || !room.key) return;
-    var want = zoomRoom, key = room.key;
-    var el = document.createElement('script');
-    el.src = 'logs/' + key + '.js?t=' + Date.now();
-    el.onload = function () {
-      el.remove();
+    var want = zoomRoom;
+    loadLive(room.key, function (log) {
       if (zoomRoom !== want) return;
-      logData = (window.__WORKROOM_LOG__ || {})[key] || { room: want, entries: [], missing: true };
+      if (log ? log === logData : logData && logData.missing) return;   // 그대로면 다시 그리지 않는다
+      logData = log || { room: want, entries: [], missing: true };
       renderRoomView(Date.now());
       renderMinutes();
-    };
-    el.onerror = function () {
-      el.remove();
-      if (zoomRoom !== want) return;
-      logData = { room: want, entries: [], missing: true };
-      renderRoomView(Date.now());
-      renderMinutes();
-    };
-    document.head.appendChild(el);
+    });
+  }
+
+  // ---------- 오늘 회의록(실시간 기록) 다시 읽기 ----------
+  // logs/<방키>.js 는 큰 방이면 수백 KB 다. 예전엔 1.5초마다(state.js 읽을 때마다) 다시 읽고 다 다시 그려서 버벅였다.
+  // 이제 그 방 세션의 마지막 기록 시각(다른 컴퓨터 방은 그 컴퓨터 동기화 시각)이 바뀌었거나 10초가 지났을 때만 다시 읽는다.
+  // 방 안 회의록·회의록 트리·세션 창 회의록이 같은 사본을 나눠 쓴다. 안 바뀌었으면 같은 객체를 돌려줘서 다시 그리지 않게 한다.
+  var LIVE_MAX_AGE = 10000, liveCache = {}, liveWait = {};
+  function liveSig(key) {
+    var room = (data && data.rooms || []).filter(function (r) { return r.key === key; })[0];
+    if (!room) return '';
+    var t = 0;
+    (data.sessions || []).forEach(function (s) { if (s.room === room.name) t = Math.max(t, s.updatedAt || 0, s.stateSince || 0); });
+    if (room.machine) (data.machines || []).forEach(function (m) { if (m.name === room.machine) t = Math.max(t, m.generatedAt || 0); });
+    return room.name + '|' + t;
+  }
+  function loadLive(key, cb) {
+    var c = liveCache[key], sig = liveSig(key), now = Date.now();
+    if (c && c.sig === sig && now - c.at < LIVE_MAX_AGE) { cb(c.log); return; }
+    if (liveWait[key]) { liveWait[key].push(cb); return; }
+    liveWait[key] = [cb];
+    loadScript('logs/' + key + '.js?t=' + now, function (ok) {
+      var log = ok ? (window.__WORKROOM_LOG__ || {})[key] || null : null;
+      // 내용이 그대로(같은 generatedAt)면 예전 객체를 그대로 쓴다
+      if (log && c && c.log && c.log.generatedAt === log.generatedAt) log = c.log;
+      liveCache[key] = { log: log, sig: sig, at: Date.now() };
+      var w = liveWait[key];
+      delete liveWait[key];
+      w.forEach(function (f) { f(log); });
+    });
   }
 
   // ---------- 회의록 ----------
@@ -2369,6 +2410,7 @@
 
   function minuteHtml(e, mt) {
     var time = hm(e.t2 || e.t);
+    if (e.kind === 'day') return '<li class="m-day">' + esc(e.text) + '</li>';
     if (e.kind === 'meeting') return '<li class="m-meet">' + esc(e.text) + ' · ' + time + '</li>';
     if (e.kind === 'state') return '<li class="m-state">' + time + ' · <b>' + esc(liveName(e.sid, e.who)) + '</b> ' + esc(e.text) + '</li>';
     if (e.kind === 'tool') return '<li class="m-tool" title="' + esc(e.text) + '">' + time + ' ' + esc(liveName(e.sid, e.who)) + ' · ' + esc(e.text) + '</li>';
@@ -2379,23 +2421,41 @@
     var open = !!expanded[k];
     return '<li class="m-say k-' + e.kind + '" style="--c:' + sp.color + '"><div class="m-head"><i class="dot"></i><b>' + esc(sp.who) + (sp.to ? ' → ' + esc(sp.to) : '') + '</b>' +
       (KIND_KO[e.kind] ? '<em>' + KIND_KO[e.kind] + '</em>' : '') + '<time>' + time + '</time></div>' +
-      '<div class="m-text' + (long && !open ? ' clamp' : '') + '">' + esc(text) + '</div>' +
+      // 접힌 긴 글은 보이는 앞부분만 넣는다 (몇 KB 글을 통째로 넣고 가리면 그리는 데 오래 걸린다)
+      '<div class="m-text' + (long && !open ? ' clamp' : '') + '">' + esc(long && !open ? text.slice(0, 900) : text) + '</div>' +
       (long ? '<button type="button" class="m-more" data-k="' + esc(k) + '">' + (open ? '접기' : '더 보기') + '</button>' : '') + '</li>';
   }
+  // 회의록 목록은 최근 lim 개만 그린다. 더 있으면 맨 위에 '앞의 기록 더 보기' 단추 (data-older 로 어느 목록인지)
+  var MIN_PAGE = 150, expandRev = 0;
+  function minListHtml(items, lim, olderId, mt) {
+    var cut = Math.max(0, items.length - lim);
+    return (cut ? '<li class="m-older"><button type="button" data-older="' + esc(olderId) + '">앞의 기록 ' + Math.min(cut, MIN_PAGE) + '개 더 보기 (남은 ' + cut + '개)</button></li>' : '') +
+      items.slice(cut).map(function (e) { return minuteHtml(e, mt); }).join('');
+  }
+  // 다시 그린 뒤 스크롤: 맨 아래였으면 맨 아래, 앞부분을 붙였으면(prepend) 보던 글이 그 자리에, 아니면 그대로
+  function keepScroll(ol, fn, prepend) {
+    var top = ol.scrollTop, fromBottom = ol.scrollHeight - ol.scrollTop, atBottom = ol.scrollHeight - ol.scrollTop - ol.clientHeight < 60;
+    fn();
+    ol.scrollTop = prepend ? ol.scrollHeight - fromBottom : atBottom ? ol.scrollHeight : top;
+  }
 
+  var roomLim = MIN_PAGE, roomPrepend = false;
   function renderMinutes(force) {
     if (!zoomRoom) return;
     var list = document.getElementById('minList');
     if (!logData) { list.innerHTML = '<li class="empty-note">회의록을 불러오는 중…</li>'; lastMinKey = ''; return; }
-    var items = mergeSayJs(logData.entries || []).filter(function (e) { return minFilter === 'all' || e.kind !== 'tool'; });
-    var key = minFilter + '|' + (logData.generatedAt || 0) + '|' + items.length + '|' + Object.keys(expanded).join(',') + '|' + JSON.stringify(roleOf);
+    var key = minFilter + '|' + (logData.generatedAt || 0) + '|' + (logData.entries || []).length + '|' + roomLim + '|' + expandRev + '|' + JSON.stringify(roleOf);
     if (!force && key === lastMinKey) return;
-    var atBottom = !lastMinKey || list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+    var first = !lastMinKey;
     lastMinKey = key;
+    var items = mergeSayJs(logData.entries || []).filter(function (e) { return minFilter === 'all' || e.kind !== 'tool'; });
     var mt = roomMeeting(zoomRoom);
-    list.innerHTML = items.length ? items.map(function (e) { return minuteHtml(e, mt); }).join('')
-      : '<li class="empty-note">' + (logData.missing ? '아직 이 방의 회의록이 없어요. 세션이 말을 하면 여기에 쌓여요.' : '표시할 기록이 없어요.') + '</li>';
-    if (atBottom) list.scrollTop = list.scrollHeight;
+    keepScroll(list, function () {
+      list.innerHTML = items.length ? minListHtml(items, roomLim, 'room', mt)
+        : '<li class="empty-note">' + (logData.missing ? '아직 이 방의 회의록이 없어요. 세션이 말을 하면 여기에 쌓여요.' : '표시할 기록이 없어요.') + '</li>';
+    }, roomPrepend);
+    roomPrepend = false;
+    if (first) list.scrollTop = list.scrollHeight;
     document.getElementById('minPath').textContent = logData.mdPath ? '자동 저장: ' + logData.mdPath : '';
   }
 
@@ -2409,6 +2469,7 @@
     if (mt) lines.push('- 안건: ' + mt.agenda, '- 진행: ' + roundPhase(mt), '');
     items.forEach(function (e) {
       var time = hm(e.t);
+      if (e.kind === 'day') { lines.push('', '## ' + e.text, ''); return; }
       if (e.kind === 'meeting') { lines.push('', '### ' + time + ' · ' + e.text, ''); return; }
       var sp = e.kind === 'state' ? { who: liveName(e.sid, e.who), to: '' } : speakerOf(e, mt);
       var label = KIND_KO[e.kind] || (e.kind === 'state' ? '상태' : '');
@@ -2453,40 +2514,58 @@
       renderTree();
     });
   }
-  // 펼친 날짜의 회의록을 읽는다 (오늘은 실시간 기록이라 매번, 지난 날짜는 바뀌었을 때만)
+  // 펼친 날짜의 회의록을 읽는다. 지난 날짜는 바뀌었을 때만, 오늘(실시간 기록)은 loadLive 가 정한 때만.
+  // 회의록 트리가 화면에 안 보이면(다른 탭·접힘) 읽지 않는다.
+  function treeShown() { var b = document.getElementById('minTree'); return !!b && b.getClientRects().length > 0; }
   function loadOpenDays() {
-    if (!minIndex) return;
+    if (!minIndex || !treeShown()) return;
     minIndex.machines.forEach(function (m) {
       m.rooms.forEach(function (r) {
         r.days.forEach(function (d) {
           if (!treeOpen[dNode(m, r, d.d)]) return;
-          var src = d.f ? 'minutes-js/' + d.f + '.js?v=' + Math.round(d.v) : r.live ? 'logs/' + r.live + '.js?t=' + Date.now() : '';
-          var id = d.f || 'live:' + r.live;
-          if (!src || treeLoading[id] || (d.f && dayData[id] && dayData[id].v === d.v)) return;
+          if (!d.f) {
+            if (!r.live) return;
+            var lid = 'live:' + r.live;
+            loadLive(r.live, function (log) {
+              var cur = dayData[lid];
+              if (cur && cur.log === log && (log || cur.missing)) return;
+              dayData[lid] = { v: d.v, log: log, rev: (cur ? cur.rev : 0) + 1, entries: log ? log.entries || [] : [], missing: !log };
+              renderTree();
+            });
+            return;
+          }
+          var id = d.f;
+          if (treeLoading[id] || (dayData[id] && dayData[id].v === d.v)) return;
           treeLoading[id] = true;
-          loadScript(src, function (ok) {
+          loadScript('minutes-js/' + d.f + '.js?v=' + Math.round(d.v), function (ok) {
             delete treeLoading[id];
-            var got = d.f ? (window.__WORKROOM_DAY__ || {})[d.f] : (window.__WORKROOM_LOG__ || {})[r.live];
-            dayData[id] = { v: d.v, at: Date.now(), entries: ok && got ? got.entries || [] : [], missing: !ok || !got };
-            if (d.f && window.__WORKROOM_DAY__) delete window.__WORKROOM_DAY__[d.f];   // 큰 날짜 파일은 한 벌만 들고 있게
+            var got = (window.__WORKROOM_DAY__ || {})[d.f], cur = dayData[id];
+            dayData[id] = { v: d.v, rev: (cur ? cur.rev : 0) + 1, entries: ok && got ? got.entries || [] : [], missing: !ok || !got };
+            if (window.__WORKROOM_DAY__) delete window.__WORKROOM_DAY__[d.f];   // 큰 날짜 파일은 한 벌만 들고 있게
             renderTree();
           });
         });
       });
     });
   }
+  var dayLim = {}, dayPrepend = {}, dayExp = {};   // 날짜마다 그릴 개수(앞의 기록 더 보기로 늘림), 더 보기를 누른 횟수(그 칸만 다시 그리게)
+  function treeDayKey(m, r, d) {
+    var dn = dNode(m, r, d.d), got = dayData[d.f || 'live:' + r.live];
+    return [got ? got.rev : 0, treeFilter, dayLim[dn] || MIN_PAGE, dayExp[dn] || 0].join('|');
+  }
   function treeDayHtml(m, r, d) {
-    var id = d.f || 'live:' + r.live, got = dayData[id];
-    if (!got) return '<div class="t-day"><p class="empty-note">회의록을 불러오는 중…</p></div>';
+    var id = d.f || 'live:' + r.live, got = dayData[id], dn = dNode(m, r, d.d);
+    var open = '<div class="t-day" data-day="' + esc(dn) + '" data-k="' + esc(treeDayKey(m, r, d)) + '">';
+    if (!got) return open + '<p class="empty-note">회의록을 불러오는 중…</p></div>';
     // 실시간 기록에는 어제 끝부분도 붙어 있어서 그 날짜 것만
     var items = mergeSayJs(got.entries).filter(function (e) {
       return (treeFilter === 'all' || e.kind !== 'tool') && (d.f || dayOf(e.t2 || e.t) === d.d);
     });
     var mt = m.self ? roomMeeting(r.name) : null;
-    return '<div class="t-day"><div class="min-tools"><div class="seg t-seg" role="group" aria-label="회의록 보기">' +
+    return open + '<div class="min-tools"><div class="seg t-seg" role="group" aria-label="회의록 보기">' +
       '<button type="button" data-tf="talk"' + (treeFilter === 'talk' ? ' class="on"' : '') + '>대화</button><button type="button" data-tf="all"' + (treeFilter === 'all' ? ' class="on"' : '') + '>전체</button></div>' +
-      '<button type="button" class="save t-save" data-day="' + esc(dNode(m, r, d.d)) + '">회의록 저장</button></div>' +
-      '<ol class="min-list" data-list="' + esc(dNode(m, r, d.d)) + '">' + (items.length ? items.map(function (e) { return minuteHtml(e, mt); }).join('')
+      '<button type="button" class="save t-save" data-day="' + esc(dn) + '">회의록 저장</button></div>' +
+      '<ol class="min-list" data-list="' + esc(dn) + '">' + (items.length ? minListHtml(items, dayLim[dn] || MIN_PAGE, dn, mt)
         : '<li class="empty-note">' + (got.missing ? '이 날짜 회의록을 읽지 못했어요.' : '표시할 기록이 없어요.') + '</li>') + '</ol></div>';
   }
   function dayOf(t) {
@@ -2497,8 +2576,28 @@
     var box = document.getElementById('minTree');
     if (!box) return;
     if (!minIndex) { box.innerHTML = '<li class="empty-note">회의록 목록을 불러오는 중… (현황판 업데이트 뒤 처음이면 잠시 걸려요)</li>'; return; }
-    var key = JSON.stringify([minIndex.generatedAt, treeOpen, treeFilter, Object.keys(expanded), Object.keys(dayData).map(function (k) { return k + dayData[k].at; })]);
-    if (key === lastTreeKey) return;
+    // 뼈대(층·방·날짜 목록과 펼침)가 그대로면 내용이 바뀐 날짜 칸만 갈아 끼운다. 예전엔 15초마다·실시간 기록을 읽을 때마다 트리 전체를 다시 그렸다.
+    var shape = minIndex.machines.map(function (m) {
+      return [mNode(m), m.rooms.map(function (r) { return [r.name, r.live, r.days.map(function (d) { return d.d + (d.f ? '' : '*'); }).join(',')]; })];
+    });
+    var key = JSON.stringify([minIndex.today, shape, treeOpen]);
+    if (key === lastTreeKey) {
+      box.querySelectorAll('.t-day[data-day]').forEach(function (el) {
+        var f = treeFind(el.getAttribute('data-day'));
+        if (!f || el.getAttribute('data-k') === treeDayKey(f.m, f.r, f.d)) return;
+        // 처음 채울 때(불러오는 중이던 칸)와 맨 아래 보던 칸은 맨 아래로, 앞부분을 붙였으면 보던 글 자리, 아니면 그대로
+        var dn = el.getAttribute('data-day'), ol = el.querySelector('.min-list');
+        var top = ol ? ol.scrollTop : 0, fromBottom = ol ? ol.scrollHeight - ol.scrollTop : 0;
+        var atBottom = !ol || ol.scrollHeight - ol.scrollTop - ol.clientHeight < 60;
+        var tmp = document.createElement('div');
+        tmp.innerHTML = treeDayHtml(f.m, f.r, f.d);
+        var nel = tmp.firstChild, nol = nel.querySelector('.min-list');
+        el.replaceWith(nel);
+        if (nol) nol.scrollTop = ol && dayPrepend[dn] ? nol.scrollHeight - fromBottom : atBottom ? nol.scrollHeight : top;
+        delete dayPrepend[dn];
+      });
+      return;
+    }
     lastTreeKey = key;
     // 다시 그려도 펼친 회의록의 스크롤 자리를 지킨다
     var scroll = {};
@@ -3301,9 +3400,191 @@
     return html + note;
   }
 
+  // ---------- 세션 창 '회의록' 탭: 이 세션과 주고받은 말만 ----------
+  // 그 세션 방의 회의록에서 이 세션(sid) 항목만 모은다: 사용자 요청·세션 답·지시·다른 세션 메시지·보고 (전체면 도구까지).
+  // 오늘은 실시간 기록(logs/<방키>.js, loadLive 로 나눠 씀), 지난 날짜는 minutes-js/<id>.js 를 최신부터 읽는다.
+  // 처음엔 대화가 40개 모이거나 3일을 읽을 때까지, 그 앞은 '이전 날짜 불러오기'로. 탭을 열 때만 읽는다.
+  // 다른 컴퓨터 지난 날짜(보관 md 사본)에는 세션 id 가 없어서 지금 이름으로 찾는다 (예전 이름일 때 말은 빠질 수 있다).
+  var sheetTab = 'info', sheetFilter = 'talk', smin = null;
+  // 이름으로 찾을 때 쓰는 이름들: 지금 이름 + 오늘 기록(세션 id 가 있음)에 남은 예전 이름 (이름을 바꾸기 전 말도 찾게)
+  var NOT_NAME = { '': 1, '사용자': 1, '의장': 1, '코디네이터': 1, 'Orca': 1, '다른 세션': 1, '?': 1 };
+  function sminMatch(s) {
+    var names = {};
+    function add(n) {
+      n = String(n || '').replace(/\s+/g, ' ').trim();
+      if (NOT_NAME[n]) return;
+      names[n] = 1;
+      if (n.length > 30) names[n.slice(0, 29) + '…'] = 1;   // hook.js 가 이름을 30자로 자른 꼴
+    }
+    add(s.title);
+    add(roleOf[s.id]);
+    var f = function (e) {
+      if (e.sid) return e.sid === s.id;
+      return e.kind !== 'meeting' && !!(names[e.who] || names[e.to]);
+    };
+    // 이 세션 항목에서 그때 이름을 배운다 (말·보고는 who, 요청·지시·메시지는 to 가 이 세션)
+    f.learn = function (e) { add(e.kind === 'say' || e.kind === 'report' || e.kind === 'dispatch' ? e.who : e.kind === 'ask' || e.kind === 'order' || e.kind === 'msg' ? e.to : ''); };
+    return f;
+  }
+  function sminStart(s) {
+    var room = (data && data.rooms || []).filter(function (r) { return r.name === s.room; })[0];
+    smin = { sid: s.id, room: room || null, rkey: room && room.key || '', days: null, next: 0, todayLog: undefined, today: [], past: [],
+      loading: false, rev: 0, lim: MIN_PAGE, prepend: false, drawn: '', match: sminMatch(s) };
+    sminPrep();
+    sminToday();
+  }
+  // 회의록 목록(minutes-index.js)에서 그 방의 지난 날짜들을 찾는다 (목록이 아직 안 왔으면 다음에)
+  function sminPrep() {
+    if (!smin || smin.days || !minIndex) return;
+    var room = smin.room, r0 = null;
+    if (room) {
+      var mName = room.machine || '', rn = room.machine ? room.label || room.name : room.name;
+      minIndex.machines.forEach(function (m) {
+        if (m.self ? !!mName : m.name !== mName) return;
+        m.rooms.forEach(function (r) { if (r.name === rn) r0 = r; });
+      });
+    }
+    smin.days = r0 ? r0.days.filter(function (d) { return d.f; }) : [];
+    if (r0 && !r0.live) smin.rkey = '';   // 실시간 기록이 없는 방은 오늘도 날짜 파일로 읽는다
+    sminMore(true);
+  }
+  function sminToday() {
+    if (!smin) return;
+    var want = smin;
+    if (!smin.rkey) { if (smin.todayLog === undefined) { smin.todayLog = null; smin.rev++; renderSheetMin(); } return; }
+    loadLive(smin.rkey, function (log) {
+      if (smin !== want || log === smin.todayLog) return;
+      smin.todayLog = log;
+      var today = dayOf(Date.now());
+      smin.today = log ? (log.entries || []).filter(function (e) { return dayOf(e.t) === today && smin.match(e); }) : [];
+      smin.today.forEach(function (e) { if (e.sid) smin.match.learn(e); });
+      smin.rev++;
+      renderSheetMin();
+    });
+  }
+  function sminTalk() {
+    var n = smin.today.length;
+    smin.past.forEach(function (g) { g.entries.forEach(function (e) { if (smin.match(e)) n++; }); });
+    return n;
+  }
+  function sminMore(auto) {
+    if (!smin || smin.loading || !smin.days || smin.next >= smin.days.length) return;
+    var want = smin, d = smin.days[smin.next];
+    smin.loading = true;
+    smin.rev++;
+    function done(entries) {
+      if (smin !== want) return;
+      smin.loading = false;
+      smin.next++;
+      // 세션 id 가 있는 항목은 지금 골라 두고, 없는 항목(다른 컴퓨터 md 사본)은 이름이 더 배워질 수 있어 그릴 때 고른다
+      smin.past.push({ d: d.d, entries: entries.filter(function (e) { return e.kind !== 'meeting' && (e.sid ? e.sid === want.sid : true); }) });
+      smin.past[smin.past.length - 1].entries.forEach(function (e) { if (e.sid) smin.match.learn(e); });
+      smin.rev++;
+      smin.prepend = true;
+      renderSheetMin();
+      if (auto && smin.next < 3 && sminTalk() < 40) sminMore(true);
+    }
+    var cached = dayData[d.f];
+    if (cached && cached.v === d.v) { done(cached.entries); return; }
+    loadScript('minutes-js/' + d.f + '.js?v=' + Math.round(d.v), function (ok) {
+      var got = (window.__WORKROOM_DAY__ || {})[d.f];
+      if (window.__WORKROOM_DAY__) delete window.__WORKROOM_DAY__[d.f];   // 큰 날짜 파일은 골라낸 것만 남긴다
+      done(ok && got ? got.entries || [] : []);
+    });
+  }
+  function sminDay(d) {
+    var p = d.split('-');
+    return +p[1] + '월 ' + +p[2] + '일' + (d === dayOf(Date.now()) ? ' · 오늘' : '');
+  }
+  // 날짜 구분 줄을 끼운 시간순 목록
+  function sminItems(filter) {
+    var today = dayOf(Date.now()), out = [];
+    var groups = smin.past.slice().reverse().filter(function (g) { return !(g.d === today && smin.today.length); });
+    if (smin.rkey) groups.push({ d: today, entries: smin.today });
+    groups.forEach(function (g) {
+      var items = mergeSayJs(g.entries.filter(function (e) { return (filter === 'all' || e.kind !== 'tool') && smin.match(e); }));
+      if (!items.length) return;
+      out.push({ kind: 'day', t: items[0].t, text: sminDay(g.d) });
+      out = out.concat(items);
+    });
+    return out;
+  }
+  function renderSheetMin(force) {
+    if (!smin || sheetTab !== 'min') return;
+    var list = document.getElementById('sheetMinList');
+    var key = [smin.rev, sheetFilter, smin.lim, expandRev, JSON.stringify(roleOf)].join('|');
+    if (!force && key === smin.drawn) return;
+    var first = !smin.drawn;
+    smin.drawn = key;
+    var items = sminItems(sheetFilter), talk = 0;
+    items.forEach(function (e) { if (e.kind !== 'day' && e.kind !== 'tool') talk++; });
+    document.getElementById('sheetMinN').textContent = talk ? ' ' + talk : '';
+    var more = smin.days && smin.next < smin.days.length;
+    var head = smin.loading ? '<li class="m-older"><button type="button" disabled>지난 날짜 불러오는 중…</button></li>'
+      : more ? '<li class="m-older"><button type="button" data-smore="1">이전 날짜 불러오기 (' + esc(sminDay(smin.days[smin.next].d)) + ')</button></li>' : '';
+    var loading = smin.todayLog === undefined && !smin.past.length;
+    var oldest = smin.past.length ? smin.past[smin.past.length - 1].d : '';
+    document.getElementById('sheetMinNote').textContent = loading ? '' : (oldest ? sminDay(oldest).replace(' · 오늘', '') + '부터 · ' : '오늘 · ') + '대화 ' + talk + '개' +
+      (smin.room && smin.room.machine ? ' · ' + smin.room.machine + ' (지난 날짜는 이름으로 찾음)' : '');
+    document.getElementById('sheetMinNote').title = smin.room && smin.room.machine ? '다른 컴퓨터의 지난 날짜 회의록(보관 사본)에는 세션 id 가 없어서 이름으로 찾아요. 이름을 바꾸기 전 말은 빠질 수 있어요.' : '';
+    keepScroll(list, function () {
+      var capped = items.length > smin.lim;
+      list.innerHTML = loading ? '<li class="empty-note">회의록을 불러오는 중…</li>'
+        : items.length ? (capped ? '' : head) + minListHtml(items, smin.lim, 'sheet', null)
+        : head + '<li class="empty-note">' + (smin.room ? '이 세션과 주고받은 말이 ' + (more ? '이 날짜까지는 ' : '') + '없어요.' : '이 세션 방의 회의록을 찾지 못했어요.') + '</li>';
+    }, smin.prepend && !first);
+    smin.prepend = false;
+    if (first) list.scrollTop = list.scrollHeight;
+  }
+  function setSheetTab(t) {
+    sheetTab = t;
+    document.querySelector('#scrim .sheet').classList.toggle('min-mode', t === 'min');
+    document.getElementById('sheetMin').hidden = t !== 'min';
+    document.querySelectorAll('#sheetTabs [data-stab]').forEach(function (b) {
+      var on = b.getAttribute('data-stab') === t;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    if (t === 'min' && openId && byId[openId]) {
+      if (!smin || smin.sid !== openId) sminStart(byId[openId]);
+      smin.drawn = '';
+      renderSheetMin(true);
+    }
+  }
+  document.getElementById('sheetTabs').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-stab]');
+    if (!b) return;
+    setSheetTab(b.getAttribute('data-stab'));
+    sheetMove.apply();   // 창 폭이 바뀌어도 머리가 화면 안에 있게
+  });
+  document.querySelector('#sheetMin .s-seg').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-sf]');
+    if (!b) return;
+    sheetFilter = b.getAttribute('data-sf');
+    this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    renderSheetMin(true);
+  });
+  document.getElementById('sheetMinList').addEventListener('click', function (e) {
+    var mo = e.target.closest('.m-more');
+    if (mo) { var k = mo.getAttribute('data-k'); if (expanded[k]) delete expanded[k]; else expanded[k] = true; expandRev++; renderSheetMin(true); return; }
+    if (!smin) return;
+    if (e.target.closest('[data-older="sheet"]')) { smin.lim += MIN_PAGE; smin.prepend = true; renderSheetMin(true); return; }
+    if (e.target.closest('[data-smore]')) sminMore(false);
+  });
+  document.getElementById('sheetMinSave').addEventListener('click', function () {
+    if (!smin) return;
+    var s = byId[smin.sid], today = dayOf(Date.now()), oldest = smin.past.length ? smin.past[smin.past.length - 1].d : today;
+    downloadMinutes(s ? titleOf(s) : '세션', oldest === today ? today : oldest + '~' + today, sminItems('talk'), null, this);
+  });
+
   function fillSheet(id) {
     var s = byId[id];
     if (!s) { closeSheet(); return; }
+    if (sheetTab === 'min') {
+      if (!smin || smin.sid !== id) sminStart(s);
+      else { sminPrep(); sminToday(); }
+      renderSheetMin();
+    }
     var st = STATE[s.state] || STATE.idle;
     var now = Date.now();
     if (s.lastMessage && !s.synthetic) loadFullAnswer(s);
@@ -3475,6 +3756,8 @@
   function closeSheet() {
     closeFireConfirm();
     openId = null;
+    smin = null;
+    document.getElementById('sheetMinN').textContent = '';
     clearTimeout(sendPoll);
     document.getElementById('scrim').classList.remove('open');
   }
@@ -3653,13 +3936,7 @@
     office3dEl.hidden = dim !== '3d';
     document.getElementById('legendHint').textContent = dim === '3d' ? HINT_3D : HINT_2D;
   }
-  function loadScript(src, done) {
-    var el = document.createElement('script');
-    el.src = src;
-    el.onload = function () { done(true); };
-    el.onerror = function () { el.remove(); done(false); };
-    document.head.appendChild(el);
-  }
+  // (loadScript 는 회의록 트리 쪽 정의 하나만 쓴다. 예전엔 여기 같은 이름이 또 있어서 그쪽을 덮어써, 읽은 script 태그가 지워지지 않고 쌓였다)
   function addCard3d() {
     if (!document.getElementById('speechCard')) office3dEl.insertAdjacentHTML('beforeend', '<div class="speech-card" id="speechCard" role="dialog" aria-label="최근에 한 말" hidden></div>');
     if (!document.getElementById('o3Jump')) office3dEl.insertAdjacentHTML('beforeend', '<button type="button" class="o3-jump" id="o3Jump" title="아래 패널(확인할 일·직원·회의록)로 내려가기">목록 <b id="o3JumpN"></b> ▾</button>');
@@ -3782,7 +4059,20 @@
     var cell = e.target.closest('.room-cell');
     if (cell && !zoomRoom) { if (cell.getAttribute('data-room')) enterRoom(cell.getAttribute('data-room')); return; }
     var more = e.target.closest('.m-more');
-    if (more) { var k = more.getAttribute('data-k'); if (expanded[k]) delete expanded[k]; else expanded[k] = true; renderMinutes(true); renderTree(); return; }
+    if (more) {
+      var k = more.getAttribute('data-k'), td = more.closest('.t-day[data-day]');
+      if (expanded[k]) delete expanded[k]; else expanded[k] = true;
+      if (td) { var tdn = td.getAttribute('data-day'); dayExp[tdn] = (dayExp[tdn] || 0) + 1; renderTree(); }   // 트리면 그 날짜 칸만
+      else { expandRev++; renderMinutes(true); }
+      return;
+    }
+    var older = e.target.closest('.m-older button[data-older]');
+    if (older) {
+      var oid = older.getAttribute('data-older');
+      if (oid === 'room') { roomLim += MIN_PAGE; roomPrepend = true; renderMinutes(true); }
+      else { dayLim[oid] = (dayLim[oid] || MIN_PAGE) + MIN_PAGE; dayPrepend[oid] = true; renderTree(); }
+      return;
+    }
     var seg = e.target.closest('.seg button');
     if (seg) {
       minFilter = seg.getAttribute('data-filter');
@@ -3890,6 +4180,7 @@
       else openTab(tab);
       if (tab === 'board' && !dock.folded) loadTasks();
       if (tab === 'report' && !dock.folded) loadActivity();
+      if (tab === 'minutes' && !dock.folded) { loadOpenDays(); renderTree(); }
       return;
     }
     if (e.target.closest('#dockPos')) { dock.pos = dock.pos === 'bottom' ? 'top' : 'bottom'; applyDock(true); }
