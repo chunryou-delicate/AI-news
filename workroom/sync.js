@@ -2,6 +2,7 @@
 // 업무방 현황판 동기화: 여러 컴퓨터의 현황판 기록을 비공개 git 저장소로 주고받는다.
 // - push: 이 컴퓨터의 상태·말·회의록 스냅숏을 저장소의 m/<컴퓨터키> 브랜치에 덮어쓴다 (커밋 1개만 유지).
 // - pull: 다른 컴퓨터 브랜치들을 받아 remote/<컴퓨터키>/ 에 풀고, 현황판이 읽는 logs/*.js 를 만든다.
+// - 보관: 회의록(minutes/)과 세션 보고서(reports/<방>/*.md)를 저장소 main 의 minutes/<컴퓨터>/, reports/<컴퓨터>/ 로 올린다.
 // - 지시 보내기(send.js): 다른 컴퓨터 세션에 보낼 지시는 send/<받을 컴퓨터 키>/ 로 올리고, 받은 컴퓨터는 Orca 로 넣은 뒤
 //   receipts/ 에 받음 표시를 올린다. 받지 않으려면 sync.json 에 "acceptSend": false.
 // - 컴퓨터가 아닌 참여자(ChatGPT 등)도 m/<아무 이름> 브랜치에 send/ 를 올려 지시 글을 보낼 수 있다
@@ -31,6 +32,8 @@ const ARCH_DIR = path.join(ROOT, 'archive-repo');           // 회의록 보관�
 const ARCHIVE_REQ = path.join(ROOT, 'archive.request');     // 회의가 끝나면 hook.js 가 만들어 바로 올리게 한다
 const ERROR_LOG = path.join(ROOT, 'error.log');
 const INBOX_DONE = path.join(ROOT, 'inbox-done.json');      // 다른 컴퓨터에서 받아 넣은 지시 (받음 표시용, 하루 보관)
+const REPORTS_DIR = path.join(ROOT, 'reports');             // 세션이 쓰는 공유용 보고서 reports/<방>/<요청ID>.md → main 의 reports/<컴퓨터>/<방>/
+const REPORT_MAX = 64 * 1024;                               // 보고서 한 장 크기 상한 (상세 내용은 프로젝트 git 에)
 const sendMod = require('./send.js');
 const COMPUTER_EMAIL = 'workroom@localhost';               // 컴퓨터 브랜치(m/<키>) 커밋 작성자. 이게 아니면 참여자 브랜치로 다룬다
 const MIN = 60 * 1000;
@@ -108,6 +111,45 @@ function readJsPayload(file) {
   }
 }
 
+// ---------- 보고서 (세션 → 워크싱크) ----------
+// 세션은 저장소를 만지지 않고 ~/.claude/workroom/reports/<방>/<요청ID>.md 에 짧은 공유용 요약만 쓴다.
+// sync.js 가 회의록 보관 때 main 의 reports/<컴퓨터>/<방>/ 로 그대로 비춰 올린다 (지우면 저장소에서도 지움).
+// 같은 요청 ID 는 같은 파일을 고쳐 쓴다. 머리말 형식은 README '보고서 올리기'.
+// 64KB 가 넘거나 열쇠·토큰·임시 터널 링크처럼 보이는 글이 있으면 올리지 않고 sync-status.json 의 reportsSkipped 에 남긴다.
+const SECRET_RE = /(ghp_[A-Za-z0-9]{20,}|github_pat_|gho_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|xox[bpa]-[A-Za-z0-9-]{10,}|EAA[A-Za-z0-9]{30,}|ya29\.[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY|trycloudflare\.com|[?&](key|token|access_token)=[A-Za-z0-9_-]{8,}|bot[0-9]{6,}:[A-Za-z0-9_-]{20,})/;
+
+// 방을 통째로 안 올리려면: 그 방 폴더에 .no-sync 파일을 두거나, sync.json 에 "reportsExcludeRooms": ["방"] (기밀 과제 등).
+// 모두 끄려면 sync.json 에 "reports": false. 고친 지 30초가 안 된 파일은 쓰는 중일 수 있어 다음 차례에 올린다.
+function collectReports(cfg) {
+  const ok = [], skipped = [];
+  if (cfg.reports === false) return { ok, skipped };
+  const exclude = new Set((cfg.reportsExcludeRooms || []).map((r) => safeName(r)));
+  let rooms = [];
+  try { rooms = fs.readdirSync(REPORTS_DIR).filter((d) => fs.statSync(path.join(REPORTS_DIR, d)).isDirectory()); } catch (_) { return { ok, skipped }; }
+  for (const room of rooms) {
+    if (exclude.has(safeName(room)) || fs.existsSync(path.join(REPORTS_DIR, room, '.no-sync'))) continue;
+    let files = [];
+    try { files = fs.readdirSync(path.join(REPORTS_DIR, room)).filter((f) => f.endsWith('.md')); } catch (_) { continue; }
+    for (const f of files) {
+      const abs = path.join(REPORTS_DIR, room, f);
+      const rel = `${safeName(room)}/${safeName(f)}`;
+      let st, text;
+      try { st = fs.statSync(abs); text = fs.readFileSync(abs, 'utf8'); } catch (_) { continue; }
+      if (Date.now() - st.mtimeMs < 30 * 1000) continue;
+      if (st.size > REPORT_MAX) { skipped.push({ file: rel, reason: `${Math.round(st.size / 1024)}KB 로 64KB 넘음 (상세는 프로젝트 git 에)` }); continue; }
+      if (SECRET_RE.test(text) || (cfg.repo && text.includes(cfg.repo))) { skipped.push({ file: rel, reason: '열쇠·토큰·링크처럼 보이는 글이 있음' }); continue; }
+      const m = text.match(/^[ \t]*request[ \t]*:[ \t]*(\S+)/im);
+      ok.push({ abs, rel, request: m ? m[1].replace(/^["']|["']$/g, '') : '', mtime: st.mtimeMs, size: st.size });
+    }
+  }
+  return { ok, skipped };
+}
+
+// 보고서가 바뀌었는지 보는 표시 (바뀌면 10분을 기다리지 않고 다음 동기화 때 올린다)
+function reportsSig(list) {
+  return list.map((r) => `${r.rel}:${r.size}:${Math.round(r.mtime)}`).sort().join('|');
+}
+
 // ---------- push ----------
 
 function pushSnapshot(cfg, interactive) {
@@ -143,9 +185,13 @@ function pushSnapshot(cfg, interactive) {
     fs.writeFileSync(path.join(OUT_DIR, 'send', m.to, `${m.id}.json`), JSON.stringify(m));
   }
   const done = readJson(INBOX_DONE, {});
+  // 그 요청에 세션이 쓴 보고서가 있으면 받음 표시에 main 의 보고서 경로를 넣는다 (ChatGPT 가 바로 찾게)
+  const reportOf = {};
+  for (const r of collectReports(cfg).ok) if (r.request) reportOf[r.request] = `reports/${safeName(cfg.machine || os.hostname())}/${r.rel}`;
   for (const id of Object.keys(done)) {
     fs.mkdirSync(path.join(OUT_DIR, 'receipts'), { recursive: true });
-    fs.writeFileSync(path.join(OUT_DIR, 'receipts', `${id}.json`), JSON.stringify(Object.assign({ id }, done[id])));
+    const rc = Object.assign({ id }, done[id], reportOf[id] ? { report: reportOf[id] } : {});
+    fs.writeFileSync(path.join(OUT_DIR, 'receipts', `${id}.json`), JSON.stringify(rc));
   }
   fs.writeFileSync(path.join(OUT_DIR, 'meta.json'), JSON.stringify({ machine: cfg.machine, key, host: os.hostname(), generatedAt: Date.now() }));
 
@@ -329,11 +375,26 @@ function safeName(name) {
   return String(name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'room';
 }
 
-function archiveMinutes(cfg, interactive) {
+// 올린 결과: reports-done.json 에 보고서마다 main 경로·올린 커밋·그때 파일 고친 시각을 적는다.
+// 세션은 자기 파일의 mtime 이 여기 적힌 것과 같으면 '공유 완료', 아니면 아직 안 올라간 것으로 본다 (규칙 5번: Git 기록과 공유 완료 구분).
+const REPORTS_DONE = path.join(ROOT, 'reports-done.json');
+function writeReportsDone(machineName, reports) {
+  let commit = '';
+  try { commit = git(ARCH_DIR, ['rev-parse', 'HEAD']).trim(); } catch (_) {}
+  const files = {};
+  for (const r of reports) files[r.rel] = { path: `reports/${machineName}/${r.rel}`, request: r.request, mtime: Math.round(r.mtime), commit };
+  writeAtomic(REPORTS_DONE, JSON.stringify({ updatedAt: Date.now(), branch: 'main', commit, files }, null, 1));
+}
+
+function archiveMinutes(cfg, interactive, reports) {
   let rooms = [];
-  try { rooms = fs.readdirSync(MINUTES_DIR).filter((d) => fs.statSync(path.join(MINUTES_DIR, d)).isDirectory()); } catch (_) { return 'none'; }
+  try { rooms = fs.readdirSync(MINUTES_DIR).filter((d) => fs.statSync(path.join(MINUTES_DIR, d)).isDirectory()); } catch (_) {}
+  reports = reports || collectReports(cfg).ok;
+  if (!rooms.length && !reports.length && !fs.existsSync(REPORTS_DIR)) return 'none';
   ensureRepo(ARCH_DIR, cfg.repo);
-  const machineDir = path.join('minutes', safeName(cfg.machine || os.hostname()));
+  const machineName = safeName(cfg.machine || os.hostname());
+  const machineDir = path.join('minutes', machineName);
+  const reportDir = path.join(ARCH_DIR, 'reports', machineName);
   for (let attempt = 0; attempt < 3; attempt++) {
     git(ARCH_DIR, ['fetch', '-q', '--depth', '1', 'origin', 'main'], interactive);
     git(ARCH_DIR, ['checkout', '-q', '-f', '-B', 'main', 'FETCH_HEAD']);
@@ -345,14 +406,22 @@ function archiveMinutes(cfg, interactive) {
         fs.copyFileSync(path.join(src, f), path.join(dst, f));
       }
     }
-    git(ARCH_DIR, ['add', '-A', 'minutes']);
+    if (fs.existsSync(path.join(ARCH_DIR, 'minutes'))) git(ARCH_DIR, ['add', '-A', 'minutes']);
+    // 보고서: 이 컴퓨터 몫(reports/<컴퓨터>/)만 지금 reports/ 폴더 모습으로 통째로 비춘다
+    fs.rmSync(reportDir, { recursive: true, force: true });
+    for (const r of reports) {
+      fs.mkdirSync(path.dirname(path.join(reportDir, r.rel)), { recursive: true });
+      fs.copyFileSync(r.abs, path.join(reportDir, r.rel));
+    }
+    try { git(ARCH_DIR, ['add', '-A', '--', 'reports']); } catch (_) {}   // 아직 아무 보고서도 없으면 경로가 없어 실패한다
     let changed = true;
     try { git(ARCH_DIR, ['diff', '--cached', '--quiet']); changed = false; } catch (_) {}
-    if (!changed) return 'unchanged';
+    if (!changed) { writeReportsDone(machineName, reports); return 'unchanged'; }
     git(ARCH_DIR, ['-c', 'user.name=workroom', '-c', 'user.email=workroom@localhost', 'commit', '-q', '-m',
-      `회의록 ${cfg.machine || os.hostname()} ${new Date().toLocaleString('ko-KR')}`]);
+      `회의록·보고서 ${cfg.machine || os.hostname()} ${new Date().toLocaleString('ko-KR')}`]);
     try {
       git(ARCH_DIR, ['push', '-q', 'origin', 'main'], interactive);
+      writeReportsDone(machineName, reports);
       return 'pushed';
     } catch (e) {
       if (attempt === 2) throw e;   // 그사이 다른 쪽이 main 에 올렸으면 새로 받아서 다시
@@ -385,14 +454,23 @@ function runOnce() {
     logError(e);
   }
   // 회의록 보관: 회의가 끝났거나(archive.request) 마지막 보관 후 archiveMinutes(기본 10)분이 지났으면 올린다.
-  const due = cfg.archive !== false && (fs.existsSync(ARCHIVE_REQ) || args.includes('--archive')
+  // 세션 보고서(reports/)가 바뀌었으면 10분을 기다리지 않고 이번에 같이 올린다.
+  const rep = collectReports(cfg);
+  const sig = reportsSig(rep.ok);
+  status.reportsSig = prev.reportsSig || '';
+  if (rep.skipped.length) status.reportsSkipped = rep.skipped;
+  const due = cfg.archive !== false && (fs.existsSync(ARCHIVE_REQ) || args.includes('--archive') || sig !== status.reportsSig
     || Date.now() - (prev.lastArchive || 0) > (Number(cfg.archiveMinutes) || 10) * MIN);
   try {
     if (due) {
       try { fs.unlinkSync(ARCHIVE_REQ); } catch (_) {}
-      status.archive = archiveMinutes(cfg, interactive);
+      status.archive = archiveMinutes(cfg, interactive, rep.ok);
       status.lastArchive = Date.now();
+      status.reportsSig = sig;
+      status.reports = rep.ok.length;
       delete status.archiveError;
+      const prevSkip = JSON.stringify(prev.reportsSkipped || []);
+      if (rep.skipped.length && JSON.stringify(rep.skipped) !== prevSkip) logError(`보고서 ${rep.skipped.length}개 안 올림: ${rep.skipped.map((s) => `${s.file} (${s.reason})`).join(', ')}`);
     }
   } catch (e) {
     status.archive = 'failed';

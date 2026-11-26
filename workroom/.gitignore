@@ -38,6 +38,9 @@ minutes-js/
 # 지시 보내기 (send.js): 보낼 것·보낸 기록·받은 기록
 outbox/
 send-log.json
+# 세션 보고서 (sync.js 가 비공개 저장소 main 의 reports/ 로 올림)
+reports/
+reports-done.json
 inbox-done.json
 # 사용량 (statusline.js)·활동 집계 (hook.js)
 usage/
