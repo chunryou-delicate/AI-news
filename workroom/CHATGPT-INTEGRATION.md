@@ -12,7 +12,7 @@
 
 - 회의록: 비공개 동기화 저장소 `main` 브랜치의 `minutes/<컴퓨터 이름>/<방>/<날짜>.md`
 - 세션 보고서(공유용 요약): `main` 브랜치의 `reports/<컴퓨터 이름>/<방>/<요청 ID 또는 날짜-시각-이름>.md`. 머리말에 project·request·status(완료/진행/보류)·summary·open·git·sha·updated 칸이 있고, 상세 원문은 `git` 칸의 프로젝트 저장소에 있습니다. 형식은 README '보고서 올리기'.
-  - 받음 표시(`receipts/<메시지 id>.json`)에 `report` 칸이 있으면 그 지시에 대한 보고서 경로입니다.
+  - 받음 표시(`receipts/<메시지 id>.json`)에 `reports` 칸이 있으면 그 지시에 대한 보고서 경로들입니다(같은 지시를 여러 방에 전했으면 여러 장). `report` 칸은 그 가운데 첫 장입니다.
 - 컴퓨터별 현황: `m/<컴퓨터 키>` 브랜치. 컴퓨터 브랜치는 각 컴퓨터의 `sync.js`가 작성자 `workroom@localhost`로 커밋하고, 늘 `meta.json`과 `state.json`이 같이 있습니다.
   - `meta.json`의 `machine`이 컴퓨터 이름, `key`가 그 컴퓨터 키입니다.
   - `state.json`의 `sessions[]`가 그 컴퓨터의 세션 목록입니다. 지시를 보낼 때 쓰는 세션 ID는 `sessions[].id`입니다.

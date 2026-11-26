@@ -185,12 +185,15 @@ function pushSnapshot(cfg, interactive) {
     fs.writeFileSync(path.join(OUT_DIR, 'send', m.to, `${m.id}.json`), JSON.stringify(m));
   }
   const done = readJson(INBOX_DONE, {});
-  // 그 요청에 세션이 쓴 보고서가 있으면 받음 표시에 main 의 보고서 경로를 넣는다 (ChatGPT 가 바로 찾게)
+  // 그 요청에 세션이 쓴 보고서가 있으면 받음 표시에 main 의 보고서 경로를 넣는다 (ChatGPT 가 바로 찾게).
+  // 같은 요청을 여러 방에 전했으면 보고서도 여러 장이라 reports 에 모두, report 에는 첫 장(방 이름 순)을 넣는다.
   const reportOf = {};
-  for (const r of collectReports(cfg).ok) if (r.request) reportOf[r.request] = `reports/${safeName(cfg.machine || os.hostname())}/${r.rel}`;
+  for (const r of collectReports(cfg).ok.sort((a, b) => a.rel.localeCompare(b.rel))) {
+    if (r.request) (reportOf[r.request] = reportOf[r.request] || []).push(`reports/${safeName(cfg.machine || os.hostname())}/${r.rel}`);
+  }
   for (const id of Object.keys(done)) {
     fs.mkdirSync(path.join(OUT_DIR, 'receipts'), { recursive: true });
-    const rc = Object.assign({ id }, done[id], reportOf[id] ? { report: reportOf[id] } : {});
+    const rc = Object.assign({ id }, done[id], reportOf[id] ? { report: reportOf[id][0], reports: reportOf[id] } : {});
     fs.writeFileSync(path.join(OUT_DIR, 'receipts', `${id}.json`), JSON.stringify(rc));
   }
   fs.writeFileSync(path.join(OUT_DIR, 'meta.json'), JSON.stringify({ machine: cfg.machine, key, host: os.hostname(), generatedAt: Date.now() }));

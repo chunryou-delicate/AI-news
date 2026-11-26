@@ -213,7 +213,7 @@ node workroom/deploy.js --machine "회사 노트북" --sync <비공개 저장소
   ```
 - **언제 올라가나:** 파일이 바뀌면 다음 동기화(1분 안팎) 때 올라가요. 고친 지 30초가 안 된 파일은 쓰는 중일 수 있어 다음 차례에 올라가요. 지운 파일은 저장소에서도 지워져요.
 - **올라갔는지 확인:** `~/.claude/workroom/reports-done.json` 에 파일마다 main 경로, 올린 커밋, 그때 파일 고친 시각(`mtime`)이 적혀요. 내 파일의 고친 시각과 같으면 공유 완료예요.
-- **받음 표시와 잇기:** 머리말의 `request` 가 이 컴퓨터가 받은 지시 ID 와 같으면, 그 지시의 받음 표시(`receipts/<id>.json`)에 `report` 칸으로 보고서 경로가 붙어요.
+- **받음 표시와 잇기:** 머리말의 `request` 가 이 컴퓨터가 받은 지시 ID 와 같으면, 그 지시의 받음 표시(`receipts/<id>.json`)에 보고서 경로가 붙어요. 같은 요청을 여러 방에 전해 보고서가 여러 장이면 `reports` 칸에 모두, `report` 칸에는 첫 장(방 이름 순)이 들어가요.
 - **안 올라가는 것:** 64KB 넘는 파일, 열쇠·토큰·임시 터널 링크처럼 보이는 글이 든 파일. 이유는 `sync-status.json` 의 `reportsSkipped` 와 `error.log` 에 남아요.
 - **방을 빼기:** 기밀 과제처럼 밖에 내면 안 되는 방은 그 방 폴더에 빈 `.no-sync` 파일을 두거나, `sync.json` 에 `"reportsExcludeRooms": ["방"]` 를 적어요. 모두 끄려면 `"reports": false`.
 
